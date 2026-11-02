@@ -49,14 +49,15 @@
   const estado = { ano: null, uf: "BR", modelo: "compensatorio", regra: "partido", distrito: null };
 
   function lerHash() {
-    const [ano, uf, modelo, regra] = location.hash.replace(/^#\/?/, "").split("/");
+    // formato: #2026-SP-compensatorio-partido (só letras, números e hífens, para funcionar também como Artifact)
+    const [ano, uf, modelo, regra] = location.hash.replace(/^#\/?/, "").split(/[-/]/);
     if (ano && indice.anos[ano]) estado.ano = ano;
     if (uf && (uf === "BR" || NOMES_UF[uf])) estado.uf = uf;
     if (modelo === "paralelo" || modelo === "compensatorio") estado.modelo = modelo;
     if (regra === "candidato" || regra === "partido") estado.regra = regra;
   }
   function escreverHash() {
-    const h = `#/${estado.ano}/${estado.uf}/${estado.modelo}/${estado.regra}`;
+    const h = `#${estado.ano}-${estado.uf}-${estado.modelo}-${estado.regra}`;
     if (location.hash !== h) history.replaceState(null, "", h);
   }
 
@@ -178,7 +179,7 @@
       <div class="tabela"><table>
         <thead><tr><th>Estado</th><th class="r">Vagas</th><th class="r">Distritos</th><th class="r">Perderiam a vaga</th><th>Quem mais ganha</th></tr></thead>
         <tbody>${linhasUF.map((l) => `<tr>
-          <td><a href="#/${estado.ano}/${l.uf}/${estado.modelo}/${estado.regra}">${NOMES_UF[l.uf]}</a></td>
+          <td><a href="#${estado.ano}-${l.uf}-${estado.modelo}-${estado.regra}">${NOMES_UF[l.uf]}</a></td>
           <td class="r">${l.vagas}</td><td class="r">${l.distritos}</td><td class="r">${l.saem}</td>
           <td>${l.maior ? `<span class="sigla">${quad(l.maior.s)}${esc(l.maior.s)} ${dif(l.maior.d)}</span>` : "—"}</td></tr>`).join("")}</tbody>
       </table></div>`;
