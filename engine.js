@@ -127,8 +127,8 @@
    * Retorna { distritos, partidos: [{grupo, atual, distritais, lista, total}], eleitos, entram, saem, ... }
    */
   function simular(dados, opcoes = {}) {
-    const modelo = opcoes.modelo || "compensatorio";
-    const regra = opcoes.regra || "partido";
+    const modelo = opcoes.modelo || "paralelo";
+    const regra = opcoes.regra || "candidato";
     const cands = dados.candidatos;
     const votos = Object.fromEntries(dados.grupos.map((g) => [g.id, g.votos]));
     const venc = vencedoresDistritos(dados, regra);

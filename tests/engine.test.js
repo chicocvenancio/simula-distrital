@@ -61,7 +61,7 @@ function estado() {
 }
 
 test("simulação completa (regra do partido)", () => {
-  const r = D.simular(estado());
+  const r = D.simular(estado(), { modelo: "compensatorio", regra: "partido" });
   // lista D'Hondt de 4: A B A A ; distritos: A, A
   assert.deepEqual(r.distritos.map((d) => d.grupo), ["A", "A"]);
   const tot = Object.fromEntries(r.partidos.map((p) => [p.grupo.id, p.total]));
@@ -74,7 +74,7 @@ test("simulação completa (regra do partido)", () => {
 });
 
 test("regra do candidato muda o vencedor do distrito", () => {
-  const r = D.simular(estado(), { regra: "candidato" });
+  const r = D.simular(estado(), { modelo: "compensatorio", regra: "candidato" });
   // distrito 1: Fia (C) 30 > Dora 25 > Beto 20
   assert.equal(r.distritos[0].grupo, "C");
   const tot = Object.fromEntries(r.partidos.map((p) => [p.grupo.id, p.total]));

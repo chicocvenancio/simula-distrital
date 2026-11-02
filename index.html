@@ -36,14 +36,14 @@
           <select id="uf"><option value="BR">Brasil (513 deputados)</option></select></label>
         <label>Modelo
           <select id="modelo">
-            <option value="compensatorio">Compensatório (PL 9.212/2017)</option>
             <option value="paralelo">Paralelo (metade + metade)</option>
+            <option value="compensatorio">Compensatório (PL 9.212/2017)</option>
           </select>
           <span class="dica" id="dica-modelo"></span></label>
         <label>Quem vence o distrito
           <select id="regra">
-            <option value="partido">O partido mais votado ali</option>
             <option value="candidato">O candidato mais votado ali</option>
+            <option value="partido">O partido mais votado ali</option>
           </select>
           <span class="dica" id="dica-regra"></span></label>
       </div>
@@ -88,13 +88,14 @@
             Outro desenho daria outro resultado — esse é um dos riscos do sistema.</li>
           <li><strong>Candidato do distrito</strong>: em cada distrito, cada partido é representado pelo seu candidato mais votado ali,
             sem repetir o mesmo candidato em dois distritos.</li>
-          <li><strong>Quem vence</strong>: por padrão, o partido com mais votos no distrito (supondo que todo eleitor do partido votaria no candidato dele).
-            A outra opção usa só os votos pessoais do candidato escolhido.</li>
+          <li><strong>Quem vence</strong>: por padrão, o candidato com mais votos pessoais no distrito.
+            A outra opção dá a vitória ao partido com mais votos ali, supondo que todo eleitor do partido votaria no candidato dele.</li>
           <li><strong>Lista preordenada</strong>: segue a ordem dos votos nominais no estado. Na prática, os partidos decidiriam a ordem.</li>
           <li><strong>Federações</strong> contam como um partido, como nas eleições de 2022 e 2026.</li>
         </ul>
-        <p>O <strong>modelo paralelo</strong> (sem compensação: metade das vagas nos distritos, metade repartida pelos votos partidários) está aqui porque as notícias
-          sobre a PEC de 2026 ainda não dizem se as cadeiras de lista descontam as dos distritos.</p>
+        <p>O padrão é o <strong>modelo paralelo</strong>: metade das vagas nos distritos e metade repartida pelos votos partidários, sem desconto.
+          É a leitura mais direta do que as notícias descrevem sobre a PEC de 2026 (“metade nos distritos, metade pela lista”). O <strong>compensatório</strong>
+          segue o texto do PL 9.212/2017, em que os distritos ganhos são descontados das cadeiras a que o partido tem direito. Os quatro cartões acima descrevem esse modelo do PL.</p>
         <p class="fonte">Fontes: <a href="https://www.congressonacional.leg.br/materias/materias-bicamerais/-/ver/pls-86-2017">PL 9.212/2017</a> (PLS 86/2017, aprovado no Senado em 2017);
           votos por município e zona, eleitorado e locais de votação do <a href="https://dadosabertos.tse.jus.br/">Portal de Dados Abertos do TSE</a>.</p>
       </div>

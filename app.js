@@ -46,7 +46,7 @@
   }
 
   let indice = null;
-  const estado = { ano: null, uf: "BR", modelo: "compensatorio", regra: "partido", distrito: null };
+  const estado = { ano: null, uf: "BR", modelo: "paralelo", regra: "candidato", distrito: null };
 
   function lerHash() {
     // formato: #2026-SP-compensatorio-partido (só letras, números e hífens, para funcionar também como Artifact)
