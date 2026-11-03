@@ -66,5 +66,340 @@
   60,
   70,
   100
- ]
+ ],
+ "estadual": {
+  "2022": [
+   "AC",
+   "AL",
+   "AM",
+   "AP",
+   "BA",
+   "CE",
+   "DF",
+   "ES",
+   "GO",
+   "MA",
+   "MG",
+   "MS",
+   "MT",
+   "PA",
+   "PB",
+   "PE",
+   "PI",
+   "PR",
+   "RJ",
+   "RN",
+   "RO",
+   "RR",
+   "RS",
+   "SC",
+   "SE",
+   "SP",
+   "TO"
+  ],
+  "2026": [
+   "AC",
+   "AL",
+   "AM",
+   "AP",
+   "BA",
+   "CE",
+   "DF",
+   "ES",
+   "GO",
+   "MA",
+   "MG",
+   "MS",
+   "MT",
+   "PA",
+   "PB",
+   "PE",
+   "PI",
+   "PR",
+   "RJ",
+   "RN",
+   "RO",
+   "RR",
+   "RS",
+   "SC",
+   "SE",
+   "SP",
+   "TO"
+  ]
+ },
+ "vereador": {
+  "2024": {
+   "AC": [
+    [
+     "01120",
+     "Acrelândia",
+     9
+    ],
+    [
+     "01570",
+     "Assis Brasil",
+     9
+    ],
+    [
+     "01058",
+     "Brasiléia",
+     11
+    ],
+    [
+     "01007",
+     "Bujari",
+     9
+    ],
+    [
+     "01015",
+     "Capixaba",
+     9
+    ],
+    [
+     "01074",
+     "Cruzeiro do Sul",
+     14
+    ],
+    [
+     "01112",
+     "Epitaciolândia",
+     11
+    ],
+    [
+     "01139",
+     "Feijó",
+     13
+    ],
+    [
+     "01104",
+     "Jordão",
+     9
+    ],
+    [
+     "01554",
+     "Manoel Urbano",
+     9
+    ],
+    [
+     "01040",
+     "Marechal Thaumaturgo",
+     11
+    ],
+    [
+     "01090",
+     "Mâncio Lima",
+     11
+    ],
+    [
+     "01511",
+     "Plácido de Castro",
+     11
+    ],
+    [
+     "01023",
+     "Porto Acre",
+     9
+    ],
+    [
+     "01066",
+     "Porto Walter",
+     9
+    ],
+    [
+     "01392",
+     "Rio Branco",
+     21
+    ],
+    [
+     "01082",
+     "Rodrigues Alves",
+     11
+    ],
+    [
+     "01031",
+     "Santa Rosa do Purus",
+     9
+    ],
+    [
+     "01457",
+     "Sena Madureira",
+     13
+    ],
+    [
+     "01538",
+     "Senador Guiomard",
+     11
+    ],
+    [
+     "01473",
+     "Tarauacá",
+     13
+    ],
+    [
+     "01490",
+     "Xapuri",
+     9
+    ]
+   ],
+   "AP": [
+    [
+     "06017",
+     "Amapá",
+     9
+    ],
+    [
+     "06033",
+     "Calçoene",
+     9
+    ],
+    [
+     "06068",
+     "Cutias",
+     9
+    ],
+    [
+     "06114",
+     "Ferreira Gomes",
+     9
+    ],
+    [
+     "06041",
+     "Itaubal",
+     9
+    ],
+    [
+     "06130",
+     "Laranjal do Jari",
+     13
+    ],
+    [
+     "06050",
+     "Macapá",
+     23
+    ],
+    [
+     "06076",
+     "Mazagão",
+     11
+    ],
+    [
+     "06092",
+     "Oiapoque",
+     11
+    ],
+    [
+     "06084",
+     "Pedra Branca do Amapari",
+     9
+    ],
+    [
+     "06025",
+     "Porto Grande",
+     11
+    ],
+    [
+     "06009",
+     "Pracuúba",
+     9
+    ],
+    [
+     "06157",
+     "Santana",
+     15
+    ],
+    [
+     "06106",
+     "Serra do Navio",
+     9
+    ],
+    [
+     "06173",
+     "Tartarugalzinho",
+     9
+    ],
+    [
+     "06122",
+     "Vitória do Jari",
+     9
+    ]
+   ],
+   "RR": [
+    [
+     "03050",
+     "Alto Alegre",
+     11
+    ],
+    [
+     "03042",
+     "Amajari",
+     9
+    ],
+    [
+     "03018",
+     "Boa Vista",
+     23
+    ],
+    [
+     "03077",
+     "Bonfim",
+     9
+    ],
+    [
+     "03069",
+     "Cantá",
+     9
+    ],
+    [
+     "03034",
+     "Caracaraí",
+     11
+    ],
+    [
+     "03000",
+     "Caroebe",
+     9
+    ],
+    [
+     "03026",
+     "Iracema",
+     9
+    ],
+    [
+     "03093",
+     "Mucajaí",
+     11
+    ],
+    [
+     "03115",
+     "Normandia",
+     9
+    ],
+    [
+     "03123",
+     "Pacaraima",
+     11
+    ],
+    [
+     "03085",
+     "Rorainópolis",
+     13
+    ],
+    [
+     "03131",
+     "São João da Baliza",
+     9
+    ],
+    [
+     "03158",
+     "São Luiz",
+     9
+    ],
+    [
+     "03107",
+     "Uiramutã",
+     9
+    ]
+   ]
+  }
+ }
 }

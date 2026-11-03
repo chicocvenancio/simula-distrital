@@ -18,11 +18,11 @@
 <body>
   <header class="topo">
     <div class="wrap">
-      <p class="kicker">Câmara dos Deputados · simulação</p>
+      <p class="kicker">Deputados e vereadores · simulação</p>
       <h1>E se fosse distrital misto?</h1>
       <p class="lead">O presidente da Câmara, Hugo Motta, quer trocar o sistema proporcional pelo <strong>voto distrital misto</strong>:
         metade dos deputados eleitos em distritos, a outra metade por lista dos partidos.
-        Veja quem teria sido eleito com os votos reais de 2022 e 2026, e quem perderia a vaga.</p>
+        A proposta vale também para deputados estaduais e vereadores. Veja quem teria sido eleito com os votos reais de 2020 a 2026, e quem perderia a vaga.</p>
     </div>
   </header>
 
@@ -30,10 +30,15 @@
     <section class="card" aria-labelledby="controles-titulo">
       <h2 id="controles-titulo" class="sr-only">Opções da simulação</h2>
       <div class="controles">
+        <label>Cargo
+          <select id="cargo"><option value="federal">Deputado federal</option></select></label>
         <label>Eleição
           <select id="ano"></select></label>
         <label>Onde
-          <select id="uf"><option value="BR">Brasil (513 deputados)</option></select></label>
+          <select id="uf"><option value="BR">Brasil (todos os estados)</option></select></label>
+        <label id="campo-mun" hidden>Município
+          <select id="mun"><option value="todos">Todos os municípios</option></select>
+          <span class="dica">Entre parênteses, o número de vagas.</span></label>
         <label>Modelo
           <select id="modelo">
             <optgroup label="Distrital misto">
@@ -101,7 +106,10 @@
           <li><strong>Quem vence</strong>: por padrão, o candidato com mais votos pessoais no distrito.
             A outra opção dá a vitória ao partido com mais votos ali, supondo que todo eleitor do partido votaria no candidato dele.</li>
           <li><strong>Lista preordenada</strong>: segue a ordem dos votos nominais no estado. Na prática, os partidos decidiriam a ordem.</li>
-          <li><strong>Federações</strong> contam como um partido, como nas eleições de 2022 e 2026.</li>
+          <li><strong>Federações</strong> contam como um partido, como nas eleições desde 2022.</li>
+          <li><strong>Vereadores</strong>: os distritos são desenhados dentro de cada município a partir dos locais de votação (votos por seção eleitoral).
+            Em municípios pequenos, com poucos locais, os distritos ficam parecidos entre si. Eleições de 2020 e 2024.</li>
+          <li><strong>Deputados estaduais</strong> (distritais no DF): mesmas regras e mesmo método dos federais, com as vagas de cada assembleia.</li>
         </ul>
         <p>O padrão é o <strong>modelo paralelo</strong>: metade das vagas nos distritos e metade repartida pelos votos partidários, sem desconto.
           É a leitura mais direta do que as notícias descrevem sobre a PEC de 2026 (“metade nos distritos, metade pela lista”). O <strong>compensatório</strong>

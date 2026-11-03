@@ -4,7 +4,7 @@
   const D = window.Distrital;
   const $ = (s) => document.querySelector(s);
   const el = {
-    ano: $("#ano"), uf: $("#uf"), modelo: $("#modelo"), regra: $("#regra"), pct: $("#pct"),
+    cargo: $("#cargo"), ano: $("#ano"), uf: $("#uf"), mun: $("#mun"), campoMun: $("#campo-mun"), modelo: $("#modelo"), regra: $("#regra"), pct: $("#pct"),
     resultado: $("#resultado"), dicaModelo: $("#dica-modelo"), dicaRegra: $("#dica-regra"), dicaPct: $("#dica-pct"),
     campoRegra: $("#campo-regra"), campoPct: $("#campo-pct"), rotPct: $("#rot-pct"),
   };
@@ -27,6 +27,9 @@
     distrital: { nome: "Distrital puro", distritos: true, pct: false,
       dica: "Todas as vagas em distritos de um deputado só, como no Reino Unido e nos EUA." },
   };
+  const DO_ = { AC: "do", AM: "do", AP: "do", CE: "do", DF: "do", ES: "do", MA: "do", MT: "do", MS: "do", PA: "do", PR: "do",
+    PI: "do", RJ: "do", RN: "do", RS: "do", TO: "do", BA: "da", PB: "da" };
+  const deUF = (uf) => `${DO_[uf] || "de"} ${NOMES_UF[uf]}`;
   const DICAS = {
     partido: "Supõe que quem votou no partido votaria no candidato dele no distrito.",
     candidato: "Conta só os votos pessoais do candidato que o partido lançaria ali.",
@@ -58,49 +61,119 @@
   }
 
   let indice = null;
-  const estado = { ano: null, uf: "BR", modelo: "paralelo", regra: "candidato", pct: "50", distrito: null };
-  const CAMPOS = ["ano", "uf", "modelo", "regra", "pct"];
+  const estado = { cargo: "federal", ano: null, uf: "BR", mun: "todos", modelo: "paralelo", regra: "candidato", pct: "50", distrito: null };
+  const CAMPOS = ["cargo", "ano", "uf", "modelo", "regra", "pct"];
+  const CARGOS = {
+    federal: { chave: "anos", nome: "deputados federais", um: "deputado federal" },
+    estadual: { chave: "estadual", nome: "deputados estaduais", um: "deputado estadual" },
+    vereador: { chave: "vereador", nome: "vereadores", um: "vereador" },
+  };
+  const anosDo = (cargo) => Object.keys(indice[CARGOS[cargo].chave] || {}).sort().reverse();
+  const ufsDo = () => {
+    const l = indice[CARGOS[estado.cargo].chave][estado.ano];
+    return Array.isArray(l) ? l : Object.keys(l);
+  };
+  const munsDo = (uf) => (estado.cargo === "vereador" ? indice.vereador[estado.ano][uf] || [] : []);
+  const vagasNome = (dados) => (dados.cargo === "distrital" ? "deputados distritais" : CARGOS[estado.cargo].nome);
 
   function lerHash() {
-    // formato: #2026-SP-paralelo-candidato-50 (só letras, números e hífens, para funcionar também como Artifact)
-    const [ano, uf, modelo, regra, p] = location.hash.replace(/^#\/?/, "").split(/[-/]/);
-    if (ano && indice.anos[ano]) estado.ano = ano;
+    // formato: #2026-federal-SP-todos-paralelo-candidato-50 (só letras, números e hífens, para funcionar também como Artifact)
+    // também aceita o formato antigo, sem cargo e município: #2026-SP-paralelo-candidato-50
+    let partes = location.hash.replace(/^#\/?/, "").split(/[-/]/);
+    if (partes.length > 1 && !(partes[1] in CARGOS)) partes = [partes[0], "federal", partes[1], "todos", ...partes.slice(2)];
+    const [ano, cargo, uf, mun, modelo, regra, p] = partes;
+    if (cargo in CARGOS && anosDo(cargo).length) estado.cargo = cargo;
+    if (ano && anosDo(estado.cargo).includes(ano)) estado.ano = ano;
+    else if (!anosDo(estado.cargo).includes(estado.ano)) estado.ano = anosDo(estado.cargo)[0];
     if (uf && (uf === "BR" || NOMES_UF[uf])) estado.uf = uf;
+    if (mun) estado.mun = mun;
     if (modelo in MODELOS) estado.modelo = modelo;
     if (regra === "candidato" || regra === "partido") estado.regra = regra;
     if (p && indice.pcts.includes(+p) && +p !== 100) estado.pct = p;
+    corrigir();
+  }
+  /** Mantém o estado coerente (UF que existe no ano/cargo, município que existe na UF) */
+  function corrigir() {
+    if (!anosDo(estado.cargo).includes(estado.ano)) estado.ano = anosDo(estado.cargo)[0];
+    const ufs = ufsDo();
+    if (estado.cargo === "vereador") {
+      if (!ufs.includes(estado.uf)) estado.uf = ufs.includes("SP") ? "SP" : ufs[0];
+      if (estado.mun !== "todos" && !munsDo(estado.uf).some((m) => m[0] === estado.mun)) estado.mun = "todos";
+    } else {
+      if (estado.uf !== "BR" && !ufs.includes(estado.uf)) estado.uf = "BR";
+      estado.mun = "todos";
+    }
   }
   function escreverHash() {
-    const h = "#" + linkPara(estado.uf);
+    const h = "#" + linkPara(estado.uf, estado.mun);
     if (location.hash !== h) history.replaceState(null, "", h);
   }
 
-  const linkPara = (uf) => `${estado.ano}-${uf}-${estado.modelo}-${estado.regra}-${estado.pct}`;
+  const linkPara = (uf, mun = "todos") => `${estado.ano}-${estado.cargo}-${uf}-${mun}-${estado.modelo}-${estado.regra}-${estado.pct}`;
   const pctEfetivo = () => (MODELOS[estado.modelo].pct ? +estado.pct : 100);
   const opcoes = () => ({ modelo: estado.modelo, regra: estado.regra, pct: pctEfetivo() });
 
-  /** Dados do estado com o conjunto de distritos do tamanho certo */
-  async function dadosUF(uf) {
-    const base = await carregar(`data/${estado.ano}/${uf}.json`);
+  /** JSON compactado com gzip (arquivos de vereador). Se o servidor já descompactou, lê direto. */
+  function carregarGz(url) {
+    if (!cache[url]) cache[url] = fetch(url).then(async (r) => {
+      if (!r.ok) throw new Error(url);
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf[0] !== 0x1f || buf[1] !== 0x8b) return JSON.parse(new TextDecoder().decode(buf));
+      const fluxo = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+      return JSON.parse(await new Response(fluxo).text());
+    });
+    return cache[url];
+  }
+
+  /** Lista de dados (um por estado ou município) com o conjunto de distritos do tamanho certo */
+  async function carregarDados() {
     const p = pctEfetivo();
-    if (!MODELOS[estado.modelo].distritos || p === 50) return base;
-    const extra = await carregar(`data/${estado.ano}/d/${uf}.json`);
-    return { ...base, distritos: extra[p] };
+    const comDistritos = MODELOS[estado.modelo].distritos && p !== 50;
+    if (estado.cargo === "vereador") {
+      const muns = await carregarGz(`data/${estado.ano}/vereador/${estado.uf}.json.gz`);
+      const lista = estado.mun === "todos" ? Object.values(muns) : [muns[estado.mun]];
+      return lista.map((d) => (comDistritos ? { ...d, distritos: d.outros[p] } : d));
+    }
+    const pasta = `data/${estado.ano}/${estado.cargo === "federal" ? "" : estado.cargo + "/"}`;
+    const ufs = estado.uf === "BR" ? ufsDo() : [estado.uf];
+    return Promise.all(ufs.map(async (uf) => {
+      const base = await carregar(`${pasta}${uf}.json`);
+      if (!comDistritos) return base;
+      const extra = await carregar(`${pasta}d/${uf}.json`);
+      return { ...base, distritos: extra[p] };
+    }));
+  }
+
+  function preencherOnde() {
+    el.ano.innerHTML = anosDo(estado.cargo).map((a) => `<option>${a}</option>`).join("");
+    const ufs = ufsDo();
+    el.uf.innerHTML = (estado.cargo === "vereador" ? "" : `<option value="BR">Brasil (todos os estados)</option>`)
+      + Object.keys(NOMES_UF).filter((uf) => ufs.includes(uf)).map((uf) => `<option value="${uf}">${NOMES_UF[uf]}</option>`).join("");
+    el.campoMun.hidden = estado.cargo !== "vereador";
+    if (estado.cargo === "vereador") {
+      el.mun.innerHTML = `<option value="todos">Todos os municípios</option>`
+        + munsDo(estado.uf).map(([cod, nome, vagas]) => `<option value="${cod}">${esc(nome)} (${vagas})</option>`).join("");
+    }
+    for (const k of [...CAMPOS, "mun"]) el[k].value = estado[k];
   }
 
   async function iniciar() {
     indice = await carregar("data/index.json");
-    const anos = Object.keys(indice.anos).sort().reverse();
-    estado.ano = anos[0];
-    el.ano.innerHTML = anos.map((a) => `<option>${a}</option>`).join("");
-    el.uf.innerHTML += Object.keys(NOMES_UF).map((uf) => `<option value="${uf}">${NOMES_UF[uf]}</option>`).join("");
+    estado.ano = anosDo("federal")[0];
+    el.cargo.innerHTML = Object.entries(CARGOS).filter(([k]) => anosDo(k).length)
+      .map(([k, c]) => `<option value="${k}">${c.um[0].toUpperCase() + c.um.slice(1)}${k === "estadual" ? " (ou distrital)" : ""}</option>`).join("");
     el.pct.innerHTML = indice.pcts.filter((p) => p !== 100).map((p) => `<option value="${p}">${p}% · ${100 - p}% pela lista</option>`).join("");
     lerHash();
-    for (const k of CAMPOS) {
-      el[k].value = estado[k];
-      el[k].addEventListener("change", () => { estado[k] = el[k].value; estado.distrito = null; atualizar(); });
+    preencherOnde();
+    for (const k of [...CAMPOS, "mun"]) {
+      el[k].addEventListener("change", () => {
+        estado[k] = el[k].value;
+        estado.distrito = null;
+        if (k === "cargo" || k === "uf" || k === "ano") { if (k !== "ano" || estado.cargo !== "vereador") estado.mun = "todos"; corrigir(); preencherOnde(); }
+        atualizar();
+      });
     }
-    window.addEventListener("hashchange", () => { lerHash(); for (const k of CAMPOS) el[k].value = estado[k]; atualizar(); });
+    window.addEventListener("hashchange", () => { lerHash(); preencherOnde(); atualizar(); });
     atualizar();
   }
 
@@ -117,15 +190,12 @@
     el.dicaPct.textContent = estado.modelo === "distritaoMisto"
       ? "As reportagens falam em metade."
       : "O PL 9.212/2017 e a PEC de 2026 falam em metade.";
+    if (estado.cargo === "vereador") el.resultado.innerHTML = `<p class="carregando">Carregando os municípios ${deUF(estado.uf)}…</p>`;
     try {
-      if (estado.uf === "BR") {
-        const ufs = indice.anos[estado.ano];
-        const todos = await Promise.all(ufs.map((uf) => dadosUF(uf)));
-        if (minha === geracao) renderBrasil(todos);
-      } else {
-        const dados = await dadosUF(estado.uf);
-        if (minha === geracao) renderEstado(dados);
-      }
+      const lista = await carregarDados();
+      if (minha !== geracao) return;
+      if (lista.length === 1) renderEstado(lista[0]);
+      else renderAgregado(lista);
     } catch (e) {
       el.resultado.innerHTML = `<p class="aviso">Não foi possível carregar os dados (${esc(e.message)}).</p>`;
     }
@@ -173,7 +243,8 @@
 
   // ------------------------------------------------------------- Brasil
 
-  function renderBrasil(todos) {
+  function renderAgregado(todos) {
+    const ver = estado.cargo === "vereador";
     const porSigla = {};
     let saem = 0, tomadas = 0, distritos = 0;
     const linhasUF = [];
@@ -190,7 +261,7 @@
         const d = p.total - p.atual;
         if (d > 0 && (!maior || d > maior.d)) maior = { s, d };
       }
-      linhasUF.push({ uf: dados.uf, vagas: dados.vagas, distritos: r.nMaj, saem: r.saem.length, tomadas: r.tomadas.length, maior });
+      linhasUF.push({ uf: dados.uf, cod: dados.cod, nome: ver ? dados.municipio : NOMES_UF[dados.uf], vagas: dados.vagas, distritos: r.nMaj, saem: r.saem.length, tomadas: r.tomadas.length, maior });
     }
     const partidos = Object.values(porSigla).sort((a, b) => b.total - a.total || b.atual - a.atual);
     const votos = partidos.reduce((s, p) => s + p.votos, 0);
@@ -200,13 +271,13 @@
     const efetivos = (k) => 1 / partidos.reduce((s, p) => s + Math.pow(p[k] / vagas, 2), 0);
 
     el.resultado.innerHTML = `
-      <h2>Brasil <span class="sub">· eleição de ${estado.ano}</span></h2>
-      <p class="intro">${MODELOS[estado.modelo].nome}. Soma dos 27 estados, cada um simulado separadamente${
+      <h2>${ver ? `Todos os municípios ${deUF(estado.uf)}` : "Brasil"} <span class="sub">· ${fmt(vagas)} ${CARGOS[estado.cargo].nome} · eleição de ${estado.ano}</span></h2>
+      <p class="intro">${MODELOS[estado.modelo].nome}. Soma ${ver ? `dos ${fmt(todos.length)} municípios` : "dos 27 estados"}, cada um simulado separadamente${
         MODELOS[estado.modelo].distritos ? `, com ${fmt(distritos)} distritos no total` : estado.modelo === "distritaoMisto" ? `; ${fmt(distritos)} vagas vão para os mais votados de cada estado` : ""}.</p>
       ${numeros([
-        ["Deputados que perderiam a vaga", fmt(saem), `de ${vagas}, ou ${pct(saem / vagas, 0)} da Câmara`],
+        [`${ver ? "Vereadores" : "Deputados"} que perderiam a vaga`, fmt(saem), `de ${fmt(vagas)}, ou ${pct(saem / vagas, 0)} do total`],
         ["Desproporcionalidade (Gallagher)", `${gAtual.toFixed(1)} → ${gNovo.toFixed(1)}`, "0 = cadeiras exatamente proporcionais aos votos"],
-        ["Partidos efetivos", `${efetivos("atual").toFixed(1)} → ${efetivos("total").toFixed(1)}`, "fragmentação da Câmara (Laakso-Taagepera)"],
+        ["Partidos efetivos", `${efetivos("atual").toFixed(1)} → ${efetivos("total").toFixed(1)}`, ver ? "fragmentação, somando todas as câmaras (Laakso-Taagepera)" : estado.cargo === "estadual" ? "fragmentação, somando todas as assembleias (Laakso-Taagepera)" : "fragmentação da Câmara (Laakso-Taagepera)"],
         estado.modelo === "compensatorio"
           ? ["Cadeiras extras por excesso de distritos", fmt(tomadas), "tomadas do fim da lista de outros partidos"]
           : estado.modelo === "distritao"
@@ -217,11 +288,12 @@
       ${barras(partidos, vagas)}
       <h3>Cadeiras por partido</h3>
       ${tabelaPartidos(partidos)}
-      <h3>Por estado</h3>
+      <h3>Por ${ver ? "município" : "estado"}</h3>
+      ${ver ? `<p class="intro">Os ${Math.min(60, linhasUF.length)} municípios com mais vagas. Escolha outro no seletor acima.</p>` : ""}
       <div class="tabela"><table>
-        <thead><tr><th>Estado</th><th class="r">Vagas</th><th class="r">${MODELOS[estado.modelo].distritos ? "Distritos" : "Mais votados"}</th><th class="r">Perderiam a vaga</th><th>Quem mais ganha</th></tr></thead>
-        <tbody>${linhasUF.map((l) => `<tr>
-          <td><a href="#${linkPara(l.uf)}">${NOMES_UF[l.uf]}</a></td>
+        <thead><tr><th>${ver ? "Município" : "Estado"}</th><th class="r">Vagas</th><th class="r">${MODELOS[estado.modelo].distritos ? "Distritos" : "Mais votados"}</th><th class="r">Perderiam a vaga</th><th>Quem mais ganha</th></tr></thead>
+        <tbody>${(ver ? linhasUF.sort((a, b) => b.vagas - a.vagas).slice(0, 60) : linhasUF).map((l) => `<tr>
+          <td><a href="#${ver ? linkPara(estado.uf, l.cod) : linkPara(l.uf)}">${esc(l.nome)}</a></td>
           <td class="r">${l.vagas}</td><td class="r">${l.distritos}</td><td class="r">${l.saem}</td>
           <td>${l.maior ? `<span class="sigla">${quad(l.maior.s)}${esc(l.maior.s)} ${dif(l.maior.d)}</span>` : "—"}</td></tr>`).join("")}</tbody>
       </table></div>`;
@@ -242,10 +314,12 @@
 
     const entram = r.entram.slice().sort((a, b) => (a.via === b.via ? b.cand.v - a.cand.v : a.via === "lista" ? 1 : -1));
     const saem = r.saem.slice().sort((a, b) => b.v - a.v);
+    const ver = estado.cargo === "vereador";
+    const semMapa = new Set(dados.unidades.map((u) => u[4] + "," + u[5])).size < 2;
     const viaTxt = (e) => (e.via === "distrito" ? `distrito ${e.distrito}` : e.via === "votados" ? `${e.posicao}º mais votado` : `${e.posicao}º da lista`);
 
     el.resultado.innerHTML = `
-      <h2>${NOMES_UF[dados.uf]} <span class="sub">· ${dados.vagas} deputados federais · eleição de ${estado.ano}</span></h2>
+      <h2>${ver ? `${esc(dados.municipio)} (${dados.uf})` : NOMES_UF[dados.uf]} <span class="sub">· ${dados.vagas} ${vagasNome(dados)} · eleição de ${estado.ano}</span></h2>
       ${numeros([
         m.distritos
           ? ["Distritos", nd, `cerca de ${fmt(porDistrito)} eleitores cada`]
@@ -262,11 +336,14 @@
       <h3>Cadeiras por partido</h3>
       ${tabelaPartidos(partidos)}
       ${m.distritos ? `<h3>Mapa dos distritos simulados</h3>
-      <p class="intro">Cada ponto é um município (ou uma zona eleitoral, nas cidades grandes), do tamanho do seu eleitorado e na cor do seu distrito. Toque em um ponto ou em um distrito para ver os detalhes.</p>
+      ${semMapa
+        ? `<p class="aviso">O TSE não publicou a localização dos locais de votação deste município (ou ele tem um só), então os distritos simulados dividem os mesmos votos em partes iguais e ficam parecidos entre si.</p>`
+        : `<p class="intro">Cada ponto é ${ver ? "um local de votação" : "um município (ou uma zona eleitoral, nas cidades grandes)"}, do tamanho do seu eleitorado e na cor do seu distrito. Toque em um ponto ou em um distrito para ver os detalhes.</p>
       <div class="mapa-wrap">${mapa(dados, r, sig)}</div>
-      <p class="nota-mapa">Os limites são uma simulação feita automaticamente para equilibrar o número de eleitores, não uma proposta.</p>
-      <label class="busca-mun">Em qual distrito fica o seu município?
-        <input type="search" id="busca-mun" list="lista-mun" placeholder="Digite o município…" autocomplete="off"></label>
+      <p class="nota-mapa">Os limites são uma simulação feita automaticamente para equilibrar o número de eleitores, não uma proposta.${
+        ver && dados.unidades.length < nd * 3 ? " Este município tem poucos locais de votação, então vários distritos dividem o mesmo local." : ""}</p>`}
+      <label class="busca-mun">Em qual distrito fica o seu ${ver ? "bairro" : "município"}?
+        <input type="search" id="busca-mun" list="lista-mun" placeholder="Digite o ${ver ? "bairro" : "município"}…" autocomplete="off"></label>
       <datalist id="lista-mun">${[...new Set(dados.unidades.map((u) => u[0]))].map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
       <div id="detalhe-distrito"></div>
       <div class="distritos" id="distritos">${r.distritos.map((v) => cartaoDistrito(v, dados, sig, atuais)).join("")}</div>` : corte(r, dados, sig)}
@@ -373,7 +450,7 @@
       .filter((x) => x.v > 0).sort((a, b) => b.v - a.v).slice(0, 8);
     return `<div class="detalhe-distrito">
       <h4>Distrito ${d.id} · ${fmt(d.aptos)} eleitores</h4>
-      <p class="onde">${lista.map((m) => esc(m.nome) + (m.inteiro ? "" : ` (zona${m.zonas.length > 1 ? "s" : ""} ${m.zonas.join(", ")}, em parte)`)).join(", ")}</p>
+      <p class="onde">${lista.map((m) => esc(m.nome) + (m.inteiro ? "" : estado.cargo === "vereador" ? " (em parte)" : ` (zona${m.zonas.length > 1 ? "s" : ""} ${[...new Set(m.zonas)].join(", ")}, em parte)`)).join(", ")}</p>
       <div class="tabela"><table><thead><tr><th>Partido</th><th>Candidato que lançaria</th><th class="r">Votos do candidato</th><th class="r">${estado.regra === "candidato" ? "%" : "Votos do partido"}</th></tr></thead>
       <tbody>${linhas.map((x, i) => `<tr${i === 0 ? ' style="font-weight:700"' : ""}><td><span class="sigla">${quad(sig(x.g))}${esc(sig(x.g))}</span></td>
         <td>${x.c ? esc(x.c.nome) : "—"}</td><td class="r">${fmt(x.cv)}</td>
@@ -426,7 +503,7 @@
       const [x, y] = px(u);
       const raio = Math.max(1.4, rMax * Math.sqrt(u.n / nMax));
       const un = dados.unidades[u.i];
-      const nome = un[0] + (contagem[un[0]] > 1 ? ` (zona ${un[2]})` : "");
+      const nome = un[0] + (contagem[un[0]] > 1 && estado.cargo !== "vereador" ? ` (zona ${un[2]})` : "");
       return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${raio.toFixed(2)}" data-r="${raio.toFixed(2)}" data-d="${u.d}" style="fill:hsl(${corDistrito(u.d)} var(--sat) var(--lum))"><title>${esc(nome)} · distrito ${u.d}, vencido por ${esc(venc[u.d])}</title></circle>`;
     }).join("");
     const rotulos = Object.entries(centro).map(([d, c]) => `<text x="${(c.x / c.n).toFixed(1)}" y="${(c.y / c.n).toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${d}</text>`).join("");

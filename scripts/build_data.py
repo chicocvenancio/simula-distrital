@@ -2,7 +2,8 @@
 """Gera data/<ano>/<UF>.json para a simulação do distrital misto (deputado federal).
 
 Uso:
-    python3 scripts/build_data.py 2022 [2026 ...]
+    python3 scripts/build_data.py 2022 2026 [federal|estadual]   # deputados
+    python3 scripts/build_data.py 2020 2024                        # vereadores (anos de eleição municipal)
 
 Baixa (e guarda em cache em scripts/.cache/) do Portal de Dados Abertos do TSE:
   - votacao_candidato_munzona_<ano>.zip -> votos de cada candidato por município e zona
@@ -20,6 +21,8 @@ corte passa por uma unidade, ela é repartida entre os dois lados (supondo que o
 distribuem por igual dentro dela); assim todos os distritos têm o mesmo número de eleitores.
 """
 import csv
+import gzip
+import multiprocessing
 import io
 import json
 import math
@@ -33,7 +36,8 @@ from pathlib import Path
 BASE = "https://cdn.tse.jus.br/estatistica/sead/odsele"
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(__file__).resolve().parent / ".cache"
-CARGO = "6"  # deputado federal
+# Código do cargo no TSE: 6 = deputado federal, 7 = deputado estadual, 8 = deputado distrital (DF), 13 = vereador
+CARGOS = {"federal": {"6"}, "estadual": {"7", "8"}, "vereador": {"13"}}
 UFS = ("AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO").split()
 NULOS = {"#NULO#", "#NE#", "#NULO", "-1", "-3", ""}
 PASTAS = {"eleitorado_local_votacao": "eleitorado_locais_votacao"}
@@ -41,11 +45,12 @@ PASTAS = {"eleitorado_local_votacao": "eleitorado_locais_votacao"}
 csv.field_size_limit(1 << 30)
 
 
-def baixar(nome: str, ano: int) -> Path:
+def baixar(nome: str, ano: int, uf: str = "") -> Path:
     CACHE.mkdir(exist_ok=True)
-    destino = CACHE / f"{nome}_{ano}.zip"
+    arquivo = f"{nome}_{ano}" + (f"_{uf}" if uf else "") + ".zip"
+    destino = CACHE / arquivo
     if not destino.exists():
-        url = f"{BASE}/{PASTAS.get(nome, nome)}/{nome}_{ano}.zip"
+        url = f"{BASE}/{PASTAS.get(nome, nome)}/{arquivo}"
         print(f"baixando {url}", file=sys.stderr)
         tmp = destino.with_suffix(".part")
         with urllib.request.urlopen(url) as r, open(tmp, "wb") as f:
@@ -101,19 +106,21 @@ def chave_grupo(row) -> tuple[str, str, str]:
 
 
 MINUSCULAS = {"da", "de", "do", "das", "dos", "e"}
+ROMANOS = {"ii", "iii", "iv", "vi", "vii", "viii", "ix", "xi", "xii", "xiii", "xiv", "xv"}
 
 
 def titulo(nome: str) -> str:
     partes = nome.strip().lower().split()
-    return " ".join(p if (i and p in MINUSCULAS) else p[:1].upper() + p[1:] for i, p in enumerate(partes))
+    return " ".join(p.upper() if p in ROMANOS else p if (i and p in MINUSCULAS) else p[:1].upper() + p[1:]
+                    for i, p in enumerate(partes))
 
 
 def sem_acento(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn").lower()
 
 
-def do_cargo(row) -> bool:
-    return col(row, "CD_CARGO", default="") == CARGO and col(row, "NR_TURNO", default="1") == "1"
+def do_cargo(row, cargos: set) -> bool:
+    return col(row, "CD_CARGO", default="") in cargos and col(row, "NR_TURNO", default="1") == "1"
 
 
 def unidade(row) -> tuple[int, int]:
@@ -231,9 +238,10 @@ def desenhar(pedacos, n, pos, unidades, idx_un, cands):
 
 # ---------------------------------------------------------------- estado
 
-def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> dict | None:
+def coletar_munzona(uf: str, zips: dict, cargos: set):
+    """Deputados: unidades = pares (município, zona). Devolve (unidades, cands, grupos) ou None."""
     feminino = {row["SQ_CANDIDATO"]: row.get("DS_GENERO", "").strip().upper() == "FEMININO"
-                for row in linhas(zips["cand_info"], uf) if col(row, "CD_CARGO", default="") == CARGO}
+                for row in linhas(zips["cand_info"], uf) if col(row, "CD_CARGO", default="") in cargos}
 
     grupos: dict[str, dict] = {}
 
@@ -253,7 +261,7 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         return unidades[k]
 
     for row in linhas(zips["detalhe"], uf):
-        if not do_cargo(row):
+        if not do_cargo(row, cargos):
             continue
         u = un(row)
         u["aptos"] += num(row["QT_APTOS"])
@@ -261,7 +269,7 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
 
     cands: dict[str, dict] = {}
     for row in linhas(zips["cand"], uf):
-        if not do_cargo(row):
+        if not do_cargo(row, cargos):
             continue
         sq = row["SQ_CANDIDATO"]
         votos = num(col(row, "QT_VOTOS_NOMINAIS_VALIDOS", "QT_VOTOS_NOMINAIS"))
@@ -282,29 +290,40 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         return None
 
     for row in linhas(zips["partido"], uf):
-        if not do_cargo(row):
+        if not do_cargo(row, cargos):
             continue
         leg = num(col(row, "QT_TOTAL_VOTOS_LEG_VALIDOS", "QT_VOTOS_LEGENDA_VALIDOS"))
         if leg:
             un(row)["grupo"][grupo(row)] += leg
 
+    return unidades, cands, grupos
+
+
+def montar(ano, uf, unidades, cands, grupos, pos_de, cargo):
+    """Parte comum: desenha os distritos de cada tamanho e monta o JSON.
+    pos_de(chave da unidade) -> (lat, lon) ou None."""
     for u in unidades.values():
         for g, v in u["grupo"].items():
             grupos[g]["votos"] += v
 
     vagas = sum(1 for c in cands.values() if c["eleito"])
+    if not vagas:
+        return None
 
     # posição de cada unidade
     pos = {}
     sem_coord = []
     for k, u in unidades.items():
-        p = coords.get(k) or coords_mun.get(k[0])
+        p = pos_de(k)
         if p:
             pos[k] = p
         else:
             sem_coord.append(k)
-    if sem_coord:
+    if sem_coord and cargo != "vereador":
         print(f"  {uf}: {len(sem_coord)} unidades sem coordenadas (ficam no centro do estado)", file=sys.stderr)
+    if sem_coord:
+        if not pos:  # nenhuma coordenada: todas no mesmo ponto
+            pos = {k: (0.0, 0.0) for k in unidades}
         tot = sum(unidades[k]["aptos"] for k in pos) or 1
         centro = (sum(pos[k][0] * unidades[k]["aptos"] for k in pos) / tot,
                   sum(pos[k][1] * unidades[k]["aptos"] for k in pos) / tot)
@@ -364,7 +383,8 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         lista_un.append([u["nome"], u["mun"], u["zona"], u["aptos"], round(lat, 4), round(lon, 4)])
 
     return {
-        "ano": ano, "uf": uf, "vagas": vagas, "cargo": "federal",
+        "ano": ano, "uf": uf, "vagas": vagas,
+        "cargo": "distrital" if cargo == "estadual" and uf == "DF" else cargo,
         "validos": sum(g["votos"] for g in lista_grupos),
         "aptos": sum(u["aptos"] for u in unidades.values()),
         "grupos": lista_grupos,
@@ -372,15 +392,178 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         "distritos": conjuntos[50][0],
         # outros tamanhos (% das vagas eleitas em distritos) vão em arquivos separados
         "_outros": {pct: conjuntos[pct][0] for pct in PCTS if pct != 50},
-        # [nome do município, código TSE, zona, eleitores aptos, lat, lon]
+        # deputados: [nome do município, código TSE, zona, eleitores aptos, lat, lon]
+        # vereador:  [bairro do local de votação, nº do local, zona, eleitores aptos, lat, lon]
         "unidades": lista_un,
     }
 
 
-def main(anos):
+# ---------------------------------------------------------------- vereadores
+
+def locais_votacao(zip_local: Path) -> dict:
+    """{(uf, município, zona, local): [lat, lon, eleitores, bairro]} a partir do cadastro de locais de votação."""
+    out = {}
+    for row in linhas(zip_local, None):
+        if col(row, "NR_TURNO", default="1") != "1":
+            continue
+        k = (row["SG_UF"], int(row["CD_MUNICIPIO"]), int(row["NR_ZONA"]), int(row["NR_LOCAL_VOTACAO"]))
+        v = out.get(k)
+        if v is None:
+            try:
+                lat = float(row["NR_LATITUDE"].replace(",", "."))
+                lon = float(row["NR_LONGITUDE"].replace(",", "."))
+                if lat == -1 or lon == -1 or not (-35 < lat < 6 and -75 < lon < -28):
+                    lat = lon = None
+            except ValueError:
+                lat = lon = None
+            bairro = limpo(row.get("NM_BAIRRO", "")) or limpo(row.get("NM_LOCAL_VOTACAO", ""))
+            v = out[k] = [lat, lon, 0, titulo(bairro) if bairro else f"Local {k[3]}"]
+        v[2] += num(row.get("QT_ELEITOR_SECAO"))
+    return out
+
+
+def vereadores_uf(ano: int, uf: str, zips: dict, locais: dict) -> dict:
+    """{código do município: dados} para todos os municípios da UF."""
+    cargos = CARGOS["vereador"]
+    feminino = {row["SQ_CANDIDATO"] for row in linhas(zips["cand_info"], uf)
+                if col(row, "CD_CARGO", default="") in cargos and row.get("DS_GENERO", "").strip().upper() == "FEMININO"}
+    cands = defaultdict(dict)    # SG_UE -> sq -> candidato
+    grupos = defaultdict(dict)   # SG_UE -> gid -> grupo
+    partido_grupo = {}           # (SG_UE, nº do partido) -> gid
+    nomes, cod_mun = {}, {}
+
+    def grupo(ue, row):
+        gid, sigla, nome = chave_grupo(row)
+        g = grupos[ue].setdefault(gid, {"id": gid, "sigla": sigla, "nome": nome, "partidos": set(), "votos": 0})
+        g["partidos"].add(row["SG_PARTIDO"].strip())
+        return gid
+
+    for row in linhas(zips["cand"], uf):
+        if not do_cargo(row, cargos):
+            continue
+        ue, sq = row["SG_UE"], row["SQ_CANDIDATO"]
+        nomes[ue] = titulo(row["NM_UE"])
+        cod_mun[ue] = int(row["CD_MUNICIPIO"])
+        c = cands[ue].get(sq)
+        if c is None:
+            situacao = row["DS_SIT_TOT_TURNO"].strip().upper()
+            c = cands[ue][sq] = {"n": row["NR_CANDIDATO"].strip(), "nome": titulo(row["NM_URNA_CANDIDATO"]),
+                                 "partido": row["SG_PARTIDO"].strip(), "g": grupo(ue, row), "v": 0,
+                                 "eleito": situacao.startswith("ELEITO")}
+            if sq in feminino:
+                c["f"] = 1
+        c["v"] += num(col(row, "QT_VOTOS_NOMINAIS_VALIDOS", "QT_VOTOS_NOMINAIS"))
+    for row in linhas(zips["partido"], uf):
+        if do_cargo(row, cargos):
+            partido_grupo[(row["SG_UE"], row["NR_PARTIDO"].strip())] = grupo(row["SG_UE"], row)
+
+    unidades = defaultdict(dict)  # SG_UE -> (zona, local) -> unidade
+    for row in linhas(zips["secao_" + uf], uf):
+        if not do_cargo(row, cargos):
+            continue
+        ue, nr, votos = row["SG_UE"], row["NR_VOTAVEL"].strip(), num(row["QT_VOTOS"])
+        if not votos or ue not in cands:
+            continue
+        if len(nr) == 2:
+            gid, sq = partido_grupo.get((ue, nr)), None
+        else:
+            sq = row["SQ_CANDIDATO"]
+            c = cands[ue].get(sq)
+            gid = c["g"] if c and c["v"] else None  # só votos válidos (candidato com votação válida)
+        if gid is None:
+            continue
+        k = (int(row["NR_ZONA"]), int(row["NR_LOCAL_VOTACAO"]))
+        u = unidades[ue].get(k)
+        if u is None:
+            info = locais.get((uf, cod_mun[ue], k[0], k[1]))
+            u = unidades[ue][k] = {"mun": k[1], "zona": k[0], "nome": info[3] if info else f"Local {k[1]}",
+                                   "aptos": info[2] if info else 0, "validos": 0,
+                                   "cand": defaultdict(int), "grupo": defaultdict(int)}
+        u["validos"] += votos
+        u["grupo"][gid] += votos
+        if sq:
+            u["cand"][sq] += votos
+
+    out = {}
+    for ue in sorted(cands, key=lambda x: nomes[x]):
+        us = unidades.get(ue)
+        if not us:
+            continue
+        for u in us.values():  # local sem eleitorado no cadastro: usa os votos como peso
+            u["aptos"] = u["aptos"] or u["validos"]
+
+        def pos_de(k, ue=ue):
+            info = locais.get((uf, cod_mun[ue], k[0], k[1]))
+            return (info[0], info[1]) if info and info[0] is not None else None
+
+        d = montar(ano, uf, us, cands[ue], grupos[ue], pos_de, "vereador")
+        if d:
+            d["cod"], d["municipio"] = ue, nomes[ue]
+            out[ue] = d
+    return out
+
+
+_LOCAIS: dict = {}
+
+
+def _vereadores_uf_arquivo(args):
+    """Processa uma UF e grava data/<ano>/vereador/<UF>.json.gz (roda em processo separado)."""
+    ano, uf, zips = args
+    zips = dict(zips, **{"secao_" + uf: baixar("votacao_secao", ano, uf)})
+    muns = vereadores_uf(ano, uf, zips, _LOCAIS)
+    if not muns:
+        return uf, None
+    for d in muns.values():
+        d["outros"] = {str(k): v for k, v in d.pop("_outros").items()}
+    pasta = ROOT / "data" / str(ano) / "vereador"
+    texto = json.dumps(muns, ensure_ascii=False, separators=(",", ":")).encode()
+    (pasta / f"{uf}.json.gz").write_bytes(gzip.compress(texto, 9, mtime=0))
+    print(f"{ano} vereador {uf}: {len(muns)} municípios, {sum(d['vagas'] for d in muns.values())} vagas, "
+          f"{len(texto) >> 20} MB -> {(pasta / f'{uf}.json.gz').stat().st_size >> 10} KB", file=sys.stderr)
+    return uf, [[cod, d["municipio"], d["vagas"]] for cod, d in muns.items()]
+
+
+def gerar_vereadores(ano: int, zips: dict, indice: dict) -> None:
+    """data/<ano>/vereador/<UF>.json.gz: {código TSE: dados do município}, com os outros tamanhos de
+    distrito em "outros". Um arquivo compactado por UF (e não um por município) para caber no Artifact;
+    o site descompacta com DecompressionStream."""
+    global _LOCAIS
+    _LOCAIS = locais_votacao(zips["local"])
+    (ROOT / "data" / str(ano) / "vereador").mkdir(parents=True, exist_ok=True)
+    ufs = [uf for uf in UFS if uf != "DF"]  # o DF não tem municípios
+    with multiprocessing.get_context("fork").Pool(3) as pool:
+        res = dict(pool.map(_vereadores_uf_arquivo, [(ano, uf, zips) for uf in ufs], chunksize=1))
+    indice.setdefault("vereador", {})[str(ano)] = {uf: res[uf] for uf in ufs if res.get(uf)}
+
+
+def coords_completas(zips_local: Path):
+    """Coordenadas do ano; locais sem coordenadas costumam tê-las em outro ano em cache."""
+    coords, coords_mun = coordenadas(zips_local)
+    for outro in sorted(CACHE.glob("eleitorado_local_votacao_*.zip")):
+        if outro != zips_local:
+            c2, m2 = coordenadas(outro)
+            for uf in c2:
+                for k, v in c2[uf].items():
+                    coords[uf].setdefault(k, v)
+                for k, v in m2[uf].items():
+                    coords_mun[uf].setdefault(k, v)
+    return coords, coords_mun
+
+
+def salvar(pasta: Path, uf: str, d: dict) -> None:
+    """data/.../<UF>.json e data/.../d/<UF>.json ({"30": [distritos], ..., "100": [...]})"""
+    (pasta / "d").mkdir(parents=True, exist_ok=True)
+    (pasta / "d" / f"{uf}.json").write_text(json.dumps({str(k): v for k, v in d.pop("_outros").items()},
+                                                       ensure_ascii=False, separators=(",", ":")))
+    (pasta / f"{uf}.json").write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
+
+
+def main(anos, cargos):
     indice_path = ROOT / "data" / "index.json"
     indice = json.loads(indice_path.read_text()) if indice_path.exists() else {"anos": {}}
+    indice["pcts"] = list(PCTS)
     for ano in anos:
+        municipal = ano % 4 == 0
         zips = {
             "cand": baixar("votacao_candidato_munzona", ano),
             "partido": baixar("votacao_partido_munzona", ano),
@@ -388,38 +571,35 @@ def main(anos):
             "local": baixar("eleitorado_local_votacao", ano),
             "cand_info": baixar("consulta_cand", ano),
         }
-        coords, coords_mun = coordenadas(zips["local"])
-        # locais sem coordenadas num ano costumam tê-las em outro: completa com os outros anos em cache
-        for outro in sorted(CACHE.glob("eleitorado_local_votacao_*.zip")):
-            if outro != zips["local"]:
-                c2, m2 = coordenadas(outro)
-                for uf in c2:
-                    for k, v in c2[uf].items():
-                        coords[uf].setdefault(k, v)
-                    for k, v in m2[uf].items():
-                        coords_mun[uf].setdefault(k, v)
-        pasta = ROOT / "data" / str(ano)
-        pasta.mkdir(parents=True, exist_ok=True)
-        feitos = []
-        for uf in UFS:
-            d = processar(ano, uf, zips, coords.get(uf, {}), coords_mun.get(uf, {}))
-            if d is None:
-                print(f"{ano} {uf}: sem dados", file=sys.stderr)
-                continue
-            # data/<ano>/d/<UF>.json: {"30": [distritos], "40": [...], ..., "100": [...]}
-            (pasta / "d").mkdir(exist_ok=True)
-            (pasta / "d" / f"{uf}.json").write_text(json.dumps({str(k): v for k, v in d.pop("_outros").items()},
-                                                               ensure_ascii=False, separators=(",", ":")))
-            (pasta / f"{uf}.json").write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
-            feitos.append(uf)
-            print(f"{ano} {uf}: {d['vagas']} vagas, {len(d['distritos'])} distritos, {len(d['unidades'])} unidades",
-                  file=sys.stderr)
-        indice["anos"][str(ano)] = feitos
-        indice["pcts"] = list(PCTS)
-        indice_path.write_text(json.dumps(indice, ensure_ascii=False, indent=1))
+        if municipal:
+            gerar_vereadores(ano, zips, indice)
+            indice_path.write_text(json.dumps(indice, ensure_ascii=False, indent=1))
+            continue
+        coords, coords_mun = coords_completas(zips["local"])
+        for cargo in cargos:
+            # federal: data/<ano>/<UF>.json (caminho original); estadual: data/<ano>/estadual/<UF>.json
+            pasta = ROOT / "data" / str(ano) / ("" if cargo == "federal" else cargo)
+            pasta.mkdir(parents=True, exist_ok=True)
+            feitos = []
+            for uf in UFS:
+                r = coletar_munzona(uf, zips, CARGOS[cargo])
+                c_uf, m_uf = coords.get(uf, {}), coords_mun.get(uf, {})
+                d = r and montar(ano, uf, *r, lambda k: c_uf.get(k) or m_uf.get(k[0]), cargo)
+                if d is None:
+                    print(f"{ano} {cargo} {uf}: sem dados", file=sys.stderr)
+                    continue
+                salvar(pasta, uf, d)
+                feitos.append(uf)
+                print(f"{ano} {cargo} {uf}: {d['vagas']} vagas, {len(d['distritos'])} distritos, {len(d['unidades'])} unidades",
+                      file=sys.stderr)
+            # "anos" é o índice dos federais
+            indice.setdefault("anos" if cargo == "federal" else cargo, {})[str(ano)] = feitos
+            indice_path.write_text(json.dumps(indice, ensure_ascii=False, indent=1))
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
-    main([int(a) for a in sys.argv[1:] if a.isdigit()])
+    args = sys.argv[1:]
+    cargos = tuple(a for a in args if a in ("federal", "estadual")) or ("federal", "estadual")
+    main([int(a) for a in args if a.isdigit()], cargos)
