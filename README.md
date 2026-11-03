@@ -16,6 +16,15 @@ Projeto irmão de [Para onde foi o seu voto?](https://github.com/chicocvenancio/
 - **Modelo paralelo** (opção): metade das vagas nos distritos, metade pelos votos partidários, sem desconto.
 - O resto das vagas é preenchido pela lista preordenada de cada partido (art. 105-D).
 
+## Outros modelos
+
+- **Distritão misto** (transição de 2030 na PEC de 2026): parte das vagas para os mais votados do estado, o resto por lista fechada (D'Hondt).
+- **Distritão**: todas as vagas para os mais votados do estado (rejeitado em 2015, 2017 e 2021).
+- **Distrital puro**: um distrito por vaga.
+- Nos modelos mistos, a parte majoritária vai de 30% a 70% (padrão: 50%). Os distritos de cada tamanho ficam em `data/<ano>/d/<UF>.json`.
+
+Padrão do site: modelo paralelo, 50%, vence o candidato mais votado no distrito.
+
 ## Hipóteses
 
 - Voto partidário = votos nominais + legenda do partido ou federação no estado.

@@ -36,11 +36,21 @@
           <select id="uf"><option value="BR">Brasil (513 deputados)</option></select></label>
         <label>Modelo
           <select id="modelo">
-            <option value="paralelo">Paralelo (metade + metade)</option>
-            <option value="compensatorio">Compensatório (PL 9.212/2017)</option>
+            <optgroup label="Distrital misto">
+              <option value="paralelo">Paralelo</option>
+              <option value="compensatorio">Compensatório (PL 9.212/2017)</option>
+            </optgroup>
+            <optgroup label="Outros modelos discutidos">
+              <option value="distritaoMisto">Distritão misto (transição 2030)</option>
+              <option value="distritao">Distritão</option>
+              <option value="distrital">Distrital puro</option>
+            </optgroup>
           </select>
           <span class="dica" id="dica-modelo"></span></label>
-        <label>Quem vence o distrito
+        <label id="campo-pct"><span id="rot-pct">Vagas eleitas nos distritos</span>
+          <select id="pct"></select>
+          <span class="dica" id="dica-pct"></span></label>
+        <label id="campo-regra">Quem vence o distrito
           <select id="regra">
             <option value="candidato">O candidato mais votado ali</option>
             <option value="partido">O partido mais votado ali</option>
@@ -95,7 +105,20 @@
         </ul>
         <p>O padrão é o <strong>modelo paralelo</strong>: metade das vagas nos distritos e metade repartida pelos votos partidários, sem desconto.
           É a leitura mais direta do que as notícias descrevem sobre a PEC de 2026 (“metade nos distritos, metade pela lista”). O <strong>compensatório</strong>
-          segue o texto do PL 9.212/2017, em que os distritos ganhos são descontados das cadeiras a que o partido tem direito. Os quatro cartões acima descrevem esse modelo do PL.</p>
+          segue o texto do PL 9.212/2017, em que os distritos ganhos são descontados das cadeiras a que o partido tem direito. Os quatro cartões acima descrevem esse modelo do PL.
+          Nos dois, dá para mudar a parte das vagas eleitas nos distritos (de 30% a 70%), como em sistemas mistos de outros países, que não dividem meio a meio.</p>
+      </div>
+
+      <div class="modelo">
+        <h3>Outros modelos discutidos</h3>
+        <ul>
+          <li><strong>Distritão misto</strong>: é a transição para 2030 negociada na PEC de 2026. Metade das vagas vai para os candidatos mais votados do estado, sem quociente eleitoral.
+            A outra metade vai para listas fechadas dos partidos, em proporção aos votos (aqui pelo método D'Hondt, com a ordem da lista seguindo os votos nominais).
+            Os detalhes ainda não foram publicados.</li>
+          <li><strong>Distritão</strong>: todas as vagas para os mais votados do estado. A Câmara rejeitou o modelo em 2015, em 2017 (na reforma relatada por Vicente Cândido, que previa distrital misto a partir de 2022)
+            e em 2021, por 423 votos a 35.</li>
+          <li><strong>Distrital puro</strong>: o estado é dividido em tantos distritos quantas são as vagas, e cada um elege um deputado por maioria simples. O Brasil usou eleição por distritos no Império e na Primeira República.</li>
+        </ul>
         <p class="fonte">Fontes: <a href="https://www.congressonacional.leg.br/materias/materias-bicamerais/-/ver/pls-86-2017">PL 9.212/2017</a> (PLS 86/2017, aprovado no Senado em 2017);
           votos por município e zona, eleitorado e locais de votação do <a href="https://dadosabertos.tse.jus.br/">Portal de Dados Abertos do TSE</a>.</p>
       </div>

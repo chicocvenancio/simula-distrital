@@ -184,6 +184,51 @@ def bissecao(pedacos: list, k: int, pos: dict) -> list:
     return bissecao(a, k1, pos) + bissecao(b, k - k1, pos)
 
 
+# Fração das vagas eleitas em distritos para a qual se desenham distritos. 50% é o PL 9.212/2017
+# (arquivo principal); 100% é o distrital puro; os outros servem ao controle de proporção.
+PCTS = (30, 40, 50, 60, 70, 100)
+
+
+def n_distritos(vagas: int, pct: int) -> int:
+    return max(1, vagas * pct // 100)
+
+
+def desenhar(pedacos, n, pos, unidades, idx_un, cands):
+    """Desenha n distritos e escolhe o candidato de cada partido em cada um."""
+    distritos = []
+    for i, parte in enumerate(bissecao(pedacos, n, pos)):
+        votos_g, votos_c = defaultdict(float), defaultdict(float)
+        validos = aptos = 0.0
+        membros = []
+        for k, peso in parte:
+            u = unidades[k]
+            f = peso / u["aptos"]
+            aptos += peso
+            validos += u["validos"] * f
+            for g, v in u["grupo"].items():
+                votos_g[g] += v * f
+            for sq, v in u["cand"].items():
+                votos_c[sq] += v * f
+            membros.append([idx_un[k], round(f, 4)])
+        distritos.append({"id": i + 1, "aptos": round(aptos), "validos": round(validos),
+                          "votos": {g: round(v) for g, v in votos_g.items() if round(v) > 0},
+                          "_cv": votos_c, "unidades": membros})
+
+    # cada partido lança 1 candidato por distrito; um candidato só concorre em 1 distrito.
+    # Escolha gulosa: os pares (candidato, distrito) com mais votos primeiro.
+    pares = [(v, sq, d["id"]) for d in distritos for sq, v in d["_cv"].items()]
+    pares.sort(key=lambda t: (-t[0], t[1], t[2]))
+    usado, ocupado, escolhidos = set(), set(), {}
+    for v, sq, did in pares:
+        g = cands[sq]["g"]
+        if sq in usado or (g, did) in ocupado:
+            continue
+        usado.add(sq)
+        ocupado.add((g, did))
+        escolhidos[(g, did)] = (sq, v)
+    return distritos, escolhidos, usado
+
+
 # ---------------------------------------------------------------- estado
 
 def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> dict | None:
@@ -248,7 +293,6 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
             grupos[g]["votos"] += v
 
     vagas = sum(1 for c in cands.values() if c["eleito"])
-    n_dist = vagas // 2
 
     # posição de cada unidade
     pos = {}
@@ -267,69 +311,38 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         for k in sem_coord:
             pos[k] = centro
 
-    pedacos = [(k, float(u["aptos"])) for k, u in unidades.items() if u["aptos"] > 0]
-    partes = bissecao(pedacos, n_dist, pos)
-
     # índice das unidades (ordenado) para o JSON
     chaves = sorted(unidades, key=lambda k: (unidades[k]["nome"], k[1]))
     idx_un = {k: i for i, k in enumerate(chaves)}
-    sq_list = list(cands)
+    pedacos = [(k, float(u["aptos"])) for k, u in unidades.items() if u["aptos"] > 0]
 
-    distritos = []
-    for i, parte in enumerate(partes):
-        votos_g, votos_c = defaultdict(float), defaultdict(float)
-        validos = aptos = 0.0
-        membros = []
-        for k, peso in parte:
-            u = unidades[k]
-            f = peso / u["aptos"]
-            aptos += peso
-            validos += u["validos"] * f
-            for g, v in u["grupo"].items():
-                votos_g[g] += v * f
-            for sq, v in u["cand"].items():
-                votos_c[sq] += v * f
-            membros.append([idx_un[k], round(f, 4)])
-        distritos.append({"id": i + 1, "aptos": round(aptos), "validos": round(validos),
-                          "votos": {g: round(v) for g, v in votos_g.items() if round(v) > 0},
-                          "_cv": votos_c, "unidades": membros})
-
-    # cada partido lança 1 candidato por distrito; um candidato só concorre em 1 distrito.
-    # Escolha gulosa: os pares (candidato, distrito) com mais votos primeiro.
-    pares = []
-    for d in distritos:
-        for sq, v in d["_cv"].items():
-            pares.append((v, sq, d["id"]))
-    pares.sort(key=lambda t: (-t[0], t[1], t[2]))
-    usado, ocupado = set(), set()
-    escolhidos = {}
-    for v, sq, did in pares:
-        g = cands[sq]["g"]
-        if sq in usado or (g, did) in ocupado:
-            continue
-        usado.add(sq)
-        ocupado.add((g, did))
-        escolhidos[(g, did)] = (sq, v)
+    conjuntos = {}  # pct -> (distritos, escolhidos)
+    usado_total = set()
+    for pct in PCTS:
+        distritos, escolhidos, usado = desenhar(pedacos, n_distritos(vagas, pct), pos, unidades, idx_un, cands)
+        conjuntos[pct] = (distritos, escolhidos)
+        usado_total |= usado
 
     # candidatos que entram no JSON: eleitos de fato, candidatos de distrito e o topo de cada lista
     por_grupo = defaultdict(list)
     for sq, c in cands.items():
         por_grupo[c["g"]].append(sq)
-    manter = set(sq for sq, c in cands.items() if c["eleito"]) | usado
+    manter = set(sq for sq, c in cands.items() if c["eleito"]) | usado_total
     for g, lst in por_grupo.items():
         lst.sort(key=lambda sq: -cands[sq]["v"])
         manter.update(lst[: vagas + 2])
     lista_sq = sorted(manter, key=lambda sq: -cands[sq]["v"])
     idx_c = {sq: i for i, sq in enumerate(lista_sq)}
 
-    for d in distritos:
-        d["cand"], d["cv"] = {}, {}
-        for g in d["votos"]:
-            if (g, d["id"]) in escolhidos:
-                sq, v = escolhidos[(g, d["id"])]
-                d["cand"][g] = idx_c[sq]
-                d["cv"][g] = round(v)
-        del d["_cv"]
+    for distritos, escolhidos in conjuntos.values():
+        for d in distritos:
+            d["cand"], d["cv"] = {}, {}
+            for g in d["votos"]:
+                if (g, d["id"]) in escolhidos:
+                    sq, v = escolhidos[(g, d["id"])]
+                    d["cand"][g] = idx_c[sq]
+                    d["cv"][g] = round(v)
+            del d["_cv"]
 
     lista_grupos = []
     for g in grupos.values():
@@ -356,7 +369,9 @@ def processar(ano: int, uf: str, zips: dict, coords: dict, coords_mun: dict) -> 
         "aptos": sum(u["aptos"] for u in unidades.values()),
         "grupos": lista_grupos,
         "candidatos": lista_c,
-        "distritos": distritos,
+        "distritos": conjuntos[50][0],
+        # outros tamanhos (% das vagas eleitas em distritos) vão em arquivos separados
+        "_outros": {pct: conjuntos[pct][0] for pct in PCTS if pct != 50},
         # [nome do município, código TSE, zona, eleitores aptos, lat, lon]
         "unidades": lista_un,
     }
@@ -391,11 +406,16 @@ def main(anos):
             if d is None:
                 print(f"{ano} {uf}: sem dados", file=sys.stderr)
                 continue
+            # data/<ano>/d/<UF>.json: {"30": [distritos], "40": [...], ..., "100": [...]}
+            (pasta / "d").mkdir(exist_ok=True)
+            (pasta / "d" / f"{uf}.json").write_text(json.dumps({str(k): v for k, v in d.pop("_outros").items()},
+                                                               ensure_ascii=False, separators=(",", ":")))
             (pasta / f"{uf}.json").write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
             feitos.append(uf)
             print(f"{ano} {uf}: {d['vagas']} vagas, {len(d['distritos'])} distritos, {len(d['unidades'])} unidades",
                   file=sys.stderr)
         indice["anos"][str(ano)] = feitos
+        indice["pcts"] = list(PCTS)
         indice_path.write_text(json.dumps(indice, ensure_ascii=False, indent=1))
 
 

@@ -15,8 +15,14 @@
  *    tinham sido preenchidas (parágrafo único). O total de cadeiras não muda.
  *  - O restante é preenchido pela lista preordenada de cada partido (art. 105-D).
  *
- * Também há a variante "paralela" (metade distritos, metade lista proporcional, sem
- * desconto), porque as reportagens sobre a PEC de 2026 ainda não deixam claro qual será usada.
+ * Outros modelos discutidos no Congresso nos últimos 20 anos, para comparação:
+ *  - "paralelo": distritos + lista proporcional, sem desconto (a leitura mais direta do que as
+ *    reportagens descrevem sobre a PEC de 2026: "metade nos distritos, metade pela lista");
+ *  - "distritaoMisto": a transição de 2030 negociada na PEC de 2026 — parte das vagas vai
+ *    para os candidatos mais votados no estado, o resto para listas fechadas, proporcionalmente;
+ *  - "distritao": todas as vagas para os mais votados no estado (PECs rejeitadas em 2015, 2017 e 2021);
+ *  - "distrital": distrital puro, todas as vagas em distritos de um deputado.
+ * Nos modelos mistos, opcoes.pct é a parte (%) das vagas eleitas no distrito/majoritariamente.
  *
  * Como ninguém votou assim, a simulação usa os votos reais de deputado:
  *  - voto partidário = votos do partido/federação no estado (nominais + legenda);
@@ -61,7 +67,7 @@
         g,
         votos: regra === "candidato" ? (d.cv[g] || 0) : d.votos[g],
         cand: d.cand[g] ?? null,
-      })).filter((x) => x.votos > 0 && (regra !== "candidato" || x.cand !== null));
+      })).filter((x) => x.votos > 0 && x.cand !== null); // partido sem candidato no distrito não concorre
       disputa.sort((a, b) => b.votos - a.votos || (d.votos[b.g] - d.votos[a.g]) || (a.g < b.g ? -1 : 1));
       const [v, s] = disputa;
       const total = regra === "candidato" ? disputa.reduce((t, x) => t + x.votos, 0) : d.validos;
@@ -123,7 +129,9 @@
 
   /**
    * Simula um estado.
-   * opcoes: { modelo: "compensatorio" | "paralelo", regra: "partido" | "candidato" }
+   * opcoes: { modelo: "paralelo" | "compensatorio" | "distritaoMisto" | "distritao" | "distrital",
+   *           regra: "partido" | "candidato", pct: 50 }
+   * dados.distritos deve ser o conjunto de distritos do tamanho certo (o app carrega o arquivo d<pct>).
    * Retorna { distritos, partidos: [{grupo, atual, distritais, lista, total}], eleitos, entram, saem, ... }
    */
   function simular(dados, opcoes = {}) {
@@ -131,23 +139,37 @@
     const regra = opcoes.regra || "candidato";
     const cands = dados.candidatos;
     const votos = Object.fromEntries(dados.grupos.map((g) => [g.id, g.votos]));
-    const venc = vencedoresDistritos(dados, regra);
-    const distritais = {};
-    for (const v of venc) if (v.grupo) distritais[v.grupo] = (distritais[v.grupo] || 0) + 1;
-
-    const r = modelo === "paralelo"
-      ? paralelo(votos, dados.vagas, dados.distritos.length, distritais)
-      : compensatorio(votos, dados.vagas, distritais);
-
-    // eleitos: primeiro os vencedores dos distritos, depois a lista de cada partido
+    const pct = modelo === "distrital" || modelo === "distritao" ? 100 : (opcoes.pct || 50);
+    const nMaj = nMajoritarias(dados.vagas, pct);
+    const porDistrito = ["paralelo", "compensatorio", "distrital"].includes(modelo);
+    const venc = porDistrito ? vencedoresDistritos(dados, regra) : [];
+    // eleitos pela parte majoritária: vencedores dos distritos ou os mais votados no estado
     const eleitos = [];
     const jaEleito = new Set();
-    for (const v of venc) {
-      if (!v.grupo) continue;
-      const c = v.cand !== null ? cands[v.cand] : null;
-      if (c) jaEleito.add(v.cand);
-      eleitos.push({ cand: c, idx: v.cand, grupo: v.grupo, via: "distrito", distrito: v.distrito.id });
+    const distritais = {};
+    if (porDistrito) {
+      for (const v of venc) {
+        if (!v.grupo) continue;
+        distritais[v.grupo] = (distritais[v.grupo] || 0) + 1;
+        const c = v.cand !== null ? cands[v.cand] : null;
+        if (c) jaEleito.add(v.cand);
+        eleitos.push({ cand: c, idx: v.cand, grupo: v.grupo, via: "distrito", distrito: v.distrito.id });
+      }
+    } else {
+      const ranking = cands.map((c, i) => i).sort((a, b) => cands[b].v - cands[a].v || a - b).slice(0, nMaj);
+      ranking.forEach((i, k) => {
+        distritais[cands[i].g] = (distritais[cands[i].g] || 0) + 1;
+        jaEleito.add(i);
+        eleitos.push({ cand: cands[i], idx: i, grupo: cands[i].g, via: "votados", posicao: k + 1 });
+      });
     }
+
+    let r;
+    if (modelo === "compensatorio") r = compensatorio(votos, dados.vagas, distritais);
+    else if (modelo === "distritao" || modelo === "distrital") r = { lista: [], porLista: {}, cadeiras: { ...distritais }, tomadas: [] };
+    else r = paralelo(votos, dados.vagas, porDistrito ? dados.distritos.length : nMaj, distritais);
+
+    // depois, a lista de cada partido
     const porGrupo = {};
     cands.forEach((c, i) => (porGrupo[c.g] ||= []).push(i));
     for (const g in porGrupo) porGrupo[g].sort((a, b) => cands[b].v - cands[a].v || a - b);
@@ -176,7 +198,12 @@
       proporcional: r.porLista[g.id] || 0,
     })).sort((a, b) => b.total - a.total || b.atual - a.atual || b.votos - a.votos);
 
-    return { modelo, regra, distritos: venc, partidos, eleitos, entram, saem, ficam, tomadas: r.tomadas, lista: r.lista };
+    return { modelo, regra, pct, nMaj: porDistrito ? dados.distritos.length : nMaj, distritos: venc, partidos, eleitos, entram, saem, ficam, tomadas: r.tomadas, lista: r.lista };
+  }
+
+  /** Quantas vagas a parte majoritária elege (igual ao nº de distritos gerado no build). */
+  function nMajoritarias(vagas, pct) {
+    return Math.max(1, Math.floor((vagas * pct) / 100));
   }
 
   /** Índice de desproporcionalidade de Gallagher (0 = cadeiras exatamente proporcionais aos votos). */
@@ -188,7 +215,7 @@
     return Math.sqrt(soma / 2);
   }
 
-  const api = { listaDHondt, compensatorio, paralelo, vencedoresDistritos, simular, gallagher };
+  const api = { nMajoritarias, listaDHondt, compensatorio, paralelo, vencedoresDistritos, simular, gallagher };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.Distrital = api;
 })(typeof window !== "undefined" ? window : globalThis);

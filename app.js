@@ -4,8 +4,9 @@
   const D = window.Distrital;
   const $ = (s) => document.querySelector(s);
   const el = {
-    ano: $("#ano"), uf: $("#uf"), modelo: $("#modelo"), regra: $("#regra"),
-    resultado: $("#resultado"), dicaModelo: $("#dica-modelo"), dicaRegra: $("#dica-regra"),
+    ano: $("#ano"), uf: $("#uf"), modelo: $("#modelo"), regra: $("#regra"), pct: $("#pct"),
+    resultado: $("#resultado"), dicaModelo: $("#dica-modelo"), dicaRegra: $("#dica-regra"), dicaPct: $("#dica-pct"),
+    campoRegra: $("#campo-regra"), campoPct: $("#campo-pct"), rotPct: $("#rot-pct"),
   };
   const NOMES_UF = {
     AC: "Acre", AL: "Alagoas", AM: "Amazonas", AP: "Amapá", BA: "Bahia", CE: "Ceará", DF: "Distrito Federal",
@@ -13,9 +14,20 @@
     PA: "Pará", PB: "Paraíba", PE: "Pernambuco", PI: "Piauí", PR: "Paraná", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
     RO: "Rondônia", RR: "Roraima", RS: "Rio Grande do Sul", SC: "Santa Catarina", SE: "Sergipe", SP: "São Paulo", TO: "Tocantins",
   };
+  // distritos: usa distritos; pct: a parte majoritária é ajustável
+  const MODELOS = {
+    paralelo: { nome: "Distrital misto paralelo", distritos: true, pct: true,
+      dica: "Parte das cadeiras nos distritos, o resto pelos votos partidários, sem desconto." },
+    compensatorio: { nome: "Distrital misto compensatório", distritos: true, pct: true,
+      dica: "Cadeiras de cada partido pelos votos partidários; os distritos são descontados delas (PL 9.212/2017)." },
+    distritaoMisto: { nome: "Distritão misto", distritos: false, pct: true,
+      dica: "Transição de 2030 na PEC: parte das vagas para os mais votados do estado, o resto por lista fechada." },
+    distritao: { nome: "Distritão", distritos: false, pct: false,
+      dica: "Todas as vagas para os mais votados do estado. Rejeitado pela Câmara em 2015, 2017 e 2021." },
+    distrital: { nome: "Distrital puro", distritos: true, pct: false,
+      dica: "Todas as vagas em distritos de um deputado só, como no Reino Unido e nos EUA." },
+  };
   const DICAS = {
-    compensatorio: "Cadeiras de cada partido pelos votos partidários; os distritos são descontados delas.",
-    paralelo: "Metade das cadeiras nos distritos, a outra metade pelos votos partidários, sem desconto.",
     partido: "Supõe que quem votou no partido votaria no candidato dele no distrito.",
     candidato: "Conta só os votos pessoais do candidato que o partido lançaria ali.",
   };
@@ -46,19 +58,34 @@
   }
 
   let indice = null;
-  const estado = { ano: null, uf: "BR", modelo: "paralelo", regra: "candidato", distrito: null };
+  const estado = { ano: null, uf: "BR", modelo: "paralelo", regra: "candidato", pct: "50", distrito: null };
+  const CAMPOS = ["ano", "uf", "modelo", "regra", "pct"];
 
   function lerHash() {
-    // formato: #2026-SP-compensatorio-partido (só letras, números e hífens, para funcionar também como Artifact)
-    const [ano, uf, modelo, regra] = location.hash.replace(/^#\/?/, "").split(/[-/]/);
+    // formato: #2026-SP-paralelo-candidato-50 (só letras, números e hífens, para funcionar também como Artifact)
+    const [ano, uf, modelo, regra, p] = location.hash.replace(/^#\/?/, "").split(/[-/]/);
     if (ano && indice.anos[ano]) estado.ano = ano;
     if (uf && (uf === "BR" || NOMES_UF[uf])) estado.uf = uf;
-    if (modelo === "paralelo" || modelo === "compensatorio") estado.modelo = modelo;
+    if (modelo in MODELOS) estado.modelo = modelo;
     if (regra === "candidato" || regra === "partido") estado.regra = regra;
+    if (p && indice.pcts.includes(+p) && +p !== 100) estado.pct = p;
   }
   function escreverHash() {
-    const h = `#${estado.ano}-${estado.uf}-${estado.modelo}-${estado.regra}`;
+    const h = "#" + linkPara(estado.uf);
     if (location.hash !== h) history.replaceState(null, "", h);
+  }
+
+  const linkPara = (uf) => `${estado.ano}-${uf}-${estado.modelo}-${estado.regra}-${estado.pct}`;
+  const pctEfetivo = () => (MODELOS[estado.modelo].pct ? +estado.pct : 100);
+  const opcoes = () => ({ modelo: estado.modelo, regra: estado.regra, pct: pctEfetivo() });
+
+  /** Dados do estado com o conjunto de distritos do tamanho certo */
+  async function dadosUF(uf) {
+    const base = await carregar(`data/${estado.ano}/${uf}.json`);
+    const p = pctEfetivo();
+    if (!MODELOS[estado.modelo].distritos || p === 50) return base;
+    const extra = await carregar(`data/${estado.ano}/d/${uf}.json`);
+    return { ...base, distritos: extra[p] };
   }
 
   async function iniciar() {
@@ -67,12 +94,13 @@
     estado.ano = anos[0];
     el.ano.innerHTML = anos.map((a) => `<option>${a}</option>`).join("");
     el.uf.innerHTML += Object.keys(NOMES_UF).map((uf) => `<option value="${uf}">${NOMES_UF[uf]}</option>`).join("");
+    el.pct.innerHTML = indice.pcts.filter((p) => p !== 100).map((p) => `<option value="${p}">${p}% · ${100 - p}% pela lista</option>`).join("");
     lerHash();
-    for (const k of ["ano", "uf", "modelo", "regra"]) {
+    for (const k of CAMPOS) {
       el[k].value = estado[k];
       el[k].addEventListener("change", () => { estado[k] = el[k].value; estado.distrito = null; atualizar(); });
     }
-    window.addEventListener("hashchange", () => { lerHash(); for (const k of ["ano", "uf", "modelo", "regra"]) el[k].value = estado[k]; atualizar(); });
+    window.addEventListener("hashchange", () => { lerHash(); for (const k of CAMPOS) el[k].value = estado[k]; atualizar(); });
     atualizar();
   }
 
@@ -80,15 +108,22 @@
   async function atualizar() {
     const minha = ++geracao;
     escreverHash();
-    el.dicaModelo.textContent = DICAS[estado.modelo];
+    const m = MODELOS[estado.modelo];
+    el.dicaModelo.textContent = m.dica;
     el.dicaRegra.textContent = DICAS[estado.regra];
+    el.campoRegra.hidden = !m.distritos;
+    el.campoPct.hidden = !m.pct;
+    el.rotPct.textContent = m.distritos ? "Vagas eleitas nos distritos" : "Vagas para os mais votados";
+    el.dicaPct.textContent = estado.modelo === "distritaoMisto"
+      ? "As reportagens falam em metade."
+      : "O PL 9.212/2017 e a PEC de 2026 falam em metade.";
     try {
       if (estado.uf === "BR") {
         const ufs = indice.anos[estado.ano];
-        const todos = await Promise.all(ufs.map((uf) => carregar(`data/${estado.ano}/${uf}.json`)));
+        const todos = await Promise.all(ufs.map((uf) => dadosUF(uf)));
         if (minha === geracao) renderBrasil(todos);
       } else {
-        const dados = await carregar(`data/${estado.ano}/${estado.uf}.json`);
+        const dados = await dadosUF(estado.uf);
         if (minha === geracao) renderEstado(dados);
       }
     } catch (e) {
@@ -105,11 +140,14 @@
         `<span class="cor-p" style="--h:${matiz(p.sigla)};flex:${p[chave]}" title="${esc(p.sigla)}: ${p[chave]}"></span>`).join("")}</div>`;
     const legenda = partidos.filter((p) => p.atual || p.total).slice(0, 14)
       .map((p) => `<li>${quad(p.sigla)}${esc(p.sigla)}</li>`).join("");
-    return `<div class="comparacao">${linha("atual", "Como foi (proporcional)")}${linha("total", "Distrital misto (simulação)")}</div>
+    return `<div class="comparacao">${linha("atual", "Como foi (proporcional)")}${linha("total", MODELOS[estado.modelo].nome + " (simulação)")}</div>
       <ul class="legenda">${legenda}</ul>`;
   }
 
-  function tabelaPartidos(partidos, comDistritos) {
+  function tabelaPartidos(partidos) {
+    const m = MODELOS[estado.modelo];
+    const comDistritos = estado.modelo !== "distritao" && estado.modelo !== "distrital";
+    const rotulo = m.distritos ? "Distritos" : "Mais votados";
     const linhas = partidos.filter((p) => p.atual || p.total).map((p) => `
       <tr><td><span class="sigla">${quad(p.sigla)}${esc(p.sigla)}</span></td>
         <td class="r">${pct(p.share)}</td>
@@ -119,8 +157,8 @@
         <td class="r">${dif(p.total - p.atual)}</td></tr>`).join("");
     return `<div class="tabela"><table>
       <thead><tr><th>Partido ou federação</th><th class="r">Votos</th><th class="r">Hoje</th>
-        ${comDistritos ? `<th class="r">Distritos</th><th class="r">Lista</th>` : ""}
-        <th class="r">Distrital misto</th><th class="r">Diferença</th></tr></thead>
+        ${comDistritos ? `<th class="r">${rotulo}</th><th class="r">Lista</th>` : ""}
+        <th class="r">Simulação</th><th class="r">Diferença</th></tr></thead>
       <tbody>${linhas}</tbody></table></div>`;
   }
 
@@ -140,10 +178,10 @@
     let saem = 0, tomadas = 0, distritos = 0;
     const linhasUF = [];
     for (const dados of todos) {
-      const r = D.simular(dados, estado);
+      const r = D.simular(dados, opcoes());
       saem += r.saem.length;
       tomadas += r.tomadas.length;
-      distritos += dados.distritos.length;
+      distritos += r.nMaj;
       let maior = null;
       for (const p of r.partidos) {
         const s = p.grupo.sigla;
@@ -152,7 +190,7 @@
         const d = p.total - p.atual;
         if (d > 0 && (!maior || d > maior.d)) maior = { s, d };
       }
-      linhasUF.push({ uf: dados.uf, vagas: dados.vagas, distritos: dados.distritos.length, saem: r.saem.length, tomadas: r.tomadas.length, maior });
+      linhasUF.push({ uf: dados.uf, vagas: dados.vagas, distritos: r.nMaj, saem: r.saem.length, tomadas: r.tomadas.length, maior });
     }
     const partidos = Object.values(porSigla).sort((a, b) => b.total - a.total || b.atual - a.atual);
     const votos = partidos.reduce((s, p) => s + p.votos, 0);
@@ -163,23 +201,27 @@
 
     el.resultado.innerHTML = `
       <h2>Brasil <span class="sub">· eleição de ${estado.ano}</span></h2>
-      <p class="intro">Soma dos 27 estados: cada um é simulado separadamente, com ${fmt(distritos)} distritos no total.</p>
+      <p class="intro">${MODELOS[estado.modelo].nome}. Soma dos 27 estados, cada um simulado separadamente${
+        MODELOS[estado.modelo].distritos ? `, com ${fmt(distritos)} distritos no total` : estado.modelo === "distritaoMisto" ? `; ${fmt(distritos)} vagas vão para os mais votados de cada estado` : ""}.</p>
       ${numeros([
         ["Deputados que perderiam a vaga", fmt(saem), `de ${vagas}, ou ${pct(saem / vagas, 0)} da Câmara`],
         ["Desproporcionalidade (Gallagher)", `${gAtual.toFixed(1)} → ${gNovo.toFixed(1)}`, "0 = cadeiras exatamente proporcionais aos votos"],
         ["Partidos efetivos", `${efetivos("atual").toFixed(1)} → ${efetivos("total").toFixed(1)}`, "fragmentação da Câmara (Laakso-Taagepera)"],
         estado.modelo === "compensatorio"
           ? ["Cadeiras extras por excesso de distritos", fmt(tomadas), "tomadas do fim da lista de outros partidos"]
-          : ["Cadeiras eleitas nos distritos", fmt(distritos), "a outra metade sai da lista"],
+          : estado.modelo === "distritao"
+            ? ["Eleitos pelos votos pessoais", fmt(vagas), "sem quociente, sem lista"]
+            : [MODELOS[estado.modelo].distritos ? "Cadeiras eleitas nos distritos" : "Cadeiras para os mais votados", fmt(distritos),
+              distritos === vagas ? "não há lista" : `as outras ${fmt(vagas - distritos)} saem da lista`],
       ])}
       ${barras(partidos, vagas)}
       <h3>Cadeiras por partido</h3>
-      ${tabelaPartidos(partidos, true)}
+      ${tabelaPartidos(partidos)}
       <h3>Por estado</h3>
       <div class="tabela"><table>
-        <thead><tr><th>Estado</th><th class="r">Vagas</th><th class="r">Distritos</th><th class="r">Perderiam a vaga</th><th>Quem mais ganha</th></tr></thead>
+        <thead><tr><th>Estado</th><th class="r">Vagas</th><th class="r">${MODELOS[estado.modelo].distritos ? "Distritos" : "Mais votados"}</th><th class="r">Perderiam a vaga</th><th>Quem mais ganha</th></tr></thead>
         <tbody>${linhasUF.map((l) => `<tr>
-          <td><a href="#${estado.ano}-${l.uf}-${estado.modelo}-${estado.regra}">${NOMES_UF[l.uf]}</a></td>
+          <td><a href="#${linkPara(l.uf)}">${NOMES_UF[l.uf]}</a></td>
           <td class="r">${l.vagas}</td><td class="r">${l.distritos}</td><td class="r">${l.saem}</td>
           <td>${l.maior ? `<span class="sigla">${quad(l.maior.s)}${esc(l.maior.s)} ${dif(l.maior.d)}</span>` : "—"}</td></tr>`).join("")}</tbody>
       </table></div>`;
@@ -188,33 +230,38 @@
   // ------------------------------------------------------------- Estado
 
   function renderEstado(dados) {
-    const r = D.simular(dados, estado);
+    const r = D.simular(dados, opcoes());
+    const m = MODELOS[estado.modelo];
+    const semNome = r.eleitos.filter((e) => !e.cand).length;
     const grupoPor = Object.fromEntries(dados.grupos.map((g) => [g.id, g]));
     const sig = (gid) => (grupoPor[gid] ? grupoPor[gid].sigla : "?");
     const partidos = r.partidos.map((p) => ({ ...p, sigla: p.grupo.sigla, share: p.votos / dados.validos }));
     const atuais = new Set(dados.candidatos.filter((c) => c.eleito));
-    const nd = dados.distritos.length;
+    const nd = r.distritos.length || 1;
     const porDistrito = Math.round(dados.aptos / nd);
 
-    const entram = r.entram.slice().sort((a, b) => (a.via === b.via ? b.cand.v - a.cand.v : a.via === "distrito" ? -1 : 1));
+    const entram = r.entram.slice().sort((a, b) => (a.via === b.via ? b.cand.v - a.cand.v : a.via === "lista" ? 1 : -1));
     const saem = r.saem.slice().sort((a, b) => b.v - a.v);
-    const viaTxt = (e) => (e.via === "distrito" ? `distrito ${e.distrito}` : `${e.posicao}º da lista`);
+    const viaTxt = (e) => (e.via === "distrito" ? `distrito ${e.distrito}` : e.via === "votados" ? `${e.posicao}º mais votado` : `${e.posicao}º da lista`);
 
     el.resultado.innerHTML = `
       <h2>${NOMES_UF[dados.uf]} <span class="sub">· ${dados.vagas} deputados federais · eleição de ${estado.ano}</span></h2>
       ${numeros([
-        ["Distritos", nd, `cerca de ${fmt(porDistrito)} eleitores cada`],
+        m.distritos
+          ? ["Distritos", nd, `cerca de ${fmt(porDistrito)} eleitores cada`]
+          : ["Vagas para os mais votados", r.nMaj, r.nMaj === dados.vagas ? "todas" : `as outras ${dados.vagas - r.nMaj} saem da lista`],
         ["Perderiam a vaga", saem.length, `de ${dados.vagas} eleitos em ${estado.ano}`],
         ["Desproporcionalidade (Gallagher)", `${D.gallagher(partidos, "atual").toFixed(1)} → ${D.gallagher(partidos, "total").toFixed(1)}`, "0 = proporcional aos votos"],
-        r.tomadas.length
-          ? ["Cadeiras extras", r.tomadas.length, resumoTomadas(r.tomadas, sig)]
-          : ["Cadeiras extras", 0, "nenhum partido ganhou mais distritos do que cadeiras"],
+        estado.modelo !== "compensatorio"
+          ? ["Partidos com cadeira", `${partidos.filter((p) => p.atual).length} → ${partidos.filter((p) => p.total).length}`, "hoje → na simulação"]
+          : r.tomadas.length
+            ? ["Cadeiras extras", r.tomadas.length, resumoTomadas(r.tomadas, sig)]
+            : ["Cadeiras extras", 0, "nenhum partido ganhou mais distritos do que cadeiras"],
       ])}
       ${barras(partidos, dados.vagas)}
       <h3>Cadeiras por partido</h3>
-      ${tabelaPartidos(partidos, true)}
-
-      <h3>Mapa dos distritos simulados</h3>
+      ${tabelaPartidos(partidos)}
+      ${m.distritos ? `<h3>Mapa dos distritos simulados</h3>
       <p class="intro">Cada ponto é um município (ou uma zona eleitoral, nas cidades grandes), do tamanho do seu eleitorado e na cor do seu distrito. Toque em um ponto ou em um distrito para ver os detalhes.</p>
       <div class="mapa-wrap">${mapa(dados, r, sig)}</div>
       <p class="nota-mapa">Os limites são uma simulação feita automaticamente para equilibrar o número de eleitores, não uma proposta.</p>
@@ -222,7 +269,8 @@
         <input type="search" id="busca-mun" list="lista-mun" placeholder="Digite o município…" autocomplete="off"></label>
       <datalist id="lista-mun">${[...new Set(dados.unidades.map((u) => u[0]))].map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
       <div id="detalhe-distrito"></div>
-      <div class="distritos" id="distritos">${r.distritos.map((v) => cartaoDistrito(v, dados, sig, atuais)).join("")}</div>
+      <div class="distritos" id="distritos">${r.distritos.map((v) => cartaoDistrito(v, dados, sig, atuais)).join("")}</div>` : corte(r, dados, sig)}
+      ${semNome ? `<p class="aviso">${semNome} vaga${semNome > 1 ? "s" : ""} ficaria${semNome > 1 ? "m" : ""} sem nome nesta simulação: o partido ganharia mais cadeiras do que candidatos que lançou em ${estado.ano}.</p>` : ""}
 
       <h3>Quem muda</h3>
       <div class="mudancas">
@@ -257,7 +305,7 @@
       const f = ativo ? Math.pow(+zoom.dataset.zoom.split(" ")[2] / +zoom.dataset.tudo.split(" ")[2], 0.6) : 1;
       svg.querySelectorAll("circle").forEach((c) => c.setAttribute("r", (c.dataset.r * f).toFixed(2)));
     });
-    $("#busca-mun").addEventListener("input", (ev) => {
+    if (m.distritos) $("#busca-mun").addEventListener("input", (ev) => {
       const nome = ev.target.value.trim().toLowerCase();
       const i = dados.unidades.findIndex((u) => u[0].toLowerCase() === nome);
       if (i < 0) return;
@@ -265,6 +313,18 @@
       if (d) { mostrar(d.id); $("#detalhe-distrito").scrollIntoView({ behavior: "smooth", block: "nearest" }); }
     });
     if (estado.distrito) mostrar(estado.distrito);
+  }
+
+  /** Distritão: a linha de corte entre o último eleito pelos votos pessoais e o primeiro que fica de fora */
+  function corte(r, dados, sig) {
+    const eleitos = new Set(r.eleitos.map((e) => e.idx));
+    const ultimo = r.eleitos.filter((e) => e.via === "votados").at(-1);
+    const fora = dados.candidatos.map((c, i) => ({ c, i })).filter((x) => !eleitos.has(x.i)).sort((a, b) => b.c.v - a.c.v).slice(0, 5);
+    if (!ultimo) return "";
+    return `<h3>A linha de corte</h3>
+      <p class="intro">O ${ultimo.posicao}º mais votado do estado entra com ${fmt(ultimo.cand.v)} votos. Logo abaixo, ficariam de fora${
+        estado.modelo === "distritaoMisto" ? " (a não ser que estejam bem colocados na lista do partido)" : ""}:</p>
+      <div class="mudancas"><ul>${linhaCand(ultimo.cand, sig(ultimo.grupo), "último eleito")}${fora.map((x) => linhaCand(x.c, sig(x.c.g), "não eleito")).join("")}</ul></div>`;
   }
 
   function resumoTomadas(tomadas, sig) {

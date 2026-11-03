@@ -89,3 +89,24 @@ test("Gallagher é zero quando cadeiras são proporcionais", () => {
   const p = [{ votos: 50, total: 5 }, { votos: 50, total: 5 }];
   assert.equal(D.gallagher(p, "total"), 0);
 });
+
+test("distritão: os mais votados do estado, sem olhar o partido", () => {
+  const r = D.simular(estado(), { modelo: "distritao" });
+  const nomes = r.eleitos.map((e) => e.cand.nome);
+  assert.deepEqual(nomes, ["Ana", "Dora", "Beto", "Fia"]);
+  assert.ok(r.eleitos.every((e) => e.via === "votados"));
+});
+
+test("distritão misto: metade mais votados, metade lista proporcional", () => {
+  const r = D.simular(estado(), { modelo: "distritaoMisto", pct: 50 });
+  // 2 mais votados: Ana (A), Dora (B); lista de 2 por D'Hondt: A, B -> Beto, Edu
+  const nomes = r.eleitos.map((e) => e.cand.nome);
+  assert.deepEqual(nomes, ["Ana", "Dora", "Beto", "Edu"]);
+  assert.equal(r.nMaj, 2);
+});
+
+test("número de vagas majoritárias por proporção", () => {
+  assert.equal(D.nMajoritarias(70, 50), 35);
+  assert.equal(D.nMajoritarias(8, 30), 2);
+  assert.equal(D.nMajoritarias(8, 100), 8);
+});
