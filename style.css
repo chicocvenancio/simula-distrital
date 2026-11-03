@@ -56,6 +56,17 @@ code { background: var(--accent-soft); padding: 0 .3em; border-radius: 4px; font
 /* controles */
 .controles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px 16px; }
 .controles label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: .9rem; min-width: 0; }
+.controles .campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.controles .campo > label { font-weight: 600; font-size: .9rem; }
+.combo { position: relative; }
+.sugestoes { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; max-height: 340px; overflow: auto;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .12); }
+.sugestoes li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: .95rem; }
+.sugestoes li .obs { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.sugestoes li:hover, .sugestoes li.ativo { background: var(--accent-soft); }
+.sugestoes li.vazio { color: var(--muted); cursor: default; }
+.sugestoes li.vazio:hover { background: none; }
 .controles .dica { font-weight: 400; color: var(--muted); font-size: .8rem; }
 select, input[type="search"] {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);

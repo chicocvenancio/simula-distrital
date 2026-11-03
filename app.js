@@ -4,7 +4,7 @@
   const D = window.Distrital;
   const $ = (s) => document.querySelector(s);
   const el = {
-    cargo: $("#cargo"), ano: $("#ano"), uf: $("#uf"), mun: $("#mun"), campoMun: $("#campo-mun"), modelo: $("#modelo"), regra: $("#regra"), pct: $("#pct"),
+    cargo: $("#cargo"), ano: $("#ano"), uf: $("#uf"), mun: $("#mun"), munSugestoes: $("#mun-sugestoes"), campoMun: $("#campo-mun"), modelo: $("#modelo"), regra: $("#regra"), pct: $("#pct"),
     resultado: $("#resultado"), dicaModelo: $("#dica-modelo"), dicaRegra: $("#dica-regra"), dicaPct: $("#dica-pct"),
     campoRegra: $("#campo-regra"), campoPct: $("#campo-pct"), rotPct: $("#rot-pct"),
   };
@@ -157,11 +157,91 @@
     el.uf.innerHTML = (estado.cargo === "vereador" ? "" : `<option value="BR">Brasil (todos os estados)</option>`)
       + Object.keys(NOMES_UF).filter((uf) => ufs.includes(uf)).map((uf) => `<option value="${uf}">${NOMES_UF[uf]}</option>`).join("");
     el.campoMun.hidden = estado.cargo !== "vereador";
-    if (estado.cargo === "vereador") {
-      el.mun.innerHTML = `<option value="todos">Todos os municípios</option>`
-        + munsDo(estado.uf).map(([cod, nome, vagas]) => `<option value="${cod}">${esc(nome)} (${vagas})</option>`).join("");
+    const atual = munsDo(estado.uf).find((m) => m[0] === estado.mun);
+    el.mun.value = atual ? atual[1] : "";
+    for (const k of CAMPOS) el[k].value = estado[k];
+  }
+
+  // ------------------------------------------------------------- busca de município
+
+  const semAcento = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  let indiceMun = null, indiceMunAno = null;
+  /** [{uf, cod, nome, vagas, chave}] de todos os municípios do ano, para a busca */
+  function todosMunicipios() {
+    if (indiceMunAno !== estado.ano) {
+      indiceMunAno = estado.ano;
+      indiceMun = Object.entries(indice.vereador[estado.ano]).flatMap(([uf, l]) =>
+        l.map(([cod, nome, vagas]) => ({ uf, cod, nome, vagas, chave: semAcento(nome) })));
     }
-    for (const k of [...CAMPOS, "mun"]) el[k].value = estado[k];
+    return indiceMun;
+  }
+  let sugestoes = [], ativa = -1;
+  function buscarMun() {
+    const q = semAcento(el.mun.value);
+    if (!q) {
+      sugestoes = [{ uf: estado.uf, cod: "todos", nome: `Todos os municípios ${deUF(estado.uf)}` },
+        ...munsDo(estado.uf).slice().sort((a, b) => b[2] - a[2]).slice(0, 8).map(([cod, nome, vagas]) => ({ uf: estado.uf, cod, nome, vagas }))];
+    } else {
+      const comeca = [], contem = [];
+      for (const m of todosMunicipios()) {
+        if (m.chave.startsWith(q)) comeca.push(m);
+        else if (m.chave.includes(q)) contem.push(m);
+      }
+      // primeiro os do estado escolhido, depois os maiores
+      const ordem = (a, b) => (b.uf === estado.uf) - (a.uf === estado.uf) || b.vagas - a.vagas || a.nome.localeCompare(b.nome);
+      sugestoes = [...comeca.sort(ordem), ...contem.sort(ordem)].slice(0, 12);
+    }
+    ativa = sugestoes.length ? 0 : -1;
+    desenharSugestoes(q);
+  }
+  function desenharSugestoes(q) {
+    el.munSugestoes.innerHTML = sugestoes.length
+      ? sugestoes.map((m, i) => `<li role="option" id="mun-op-${i}" data-i="${i}" class="${i === ativa ? "ativo" : ""}" aria-selected="${i === ativa}">
+          <span>${esc(m.nome)}</span><span class="obs">${m.cod === "todos" ? "" : `${m.uf} · ${m.vagas} vagas`}</span></li>`).join("")
+      : `<li class="vazio">Nenhum município com “${esc(q)}”.</li>`;
+    el.munSugestoes.hidden = false;
+    el.mun.setAttribute("aria-expanded", "true");
+    el.mun.setAttribute("aria-activedescendant", ativa >= 0 ? `mun-op-${ativa}` : "");
+    const li = el.munSugestoes.querySelector(".ativo");
+    if (li) li.scrollIntoView({ block: "nearest" });
+  }
+  function fecharSugestoes() {
+    el.munSugestoes.hidden = true;
+    el.mun.setAttribute("aria-expanded", "false");
+  }
+  function escolherMun(m) {
+    fecharSugestoes();
+    estado.uf = m.uf;
+    estado.mun = m.cod;
+    estado.distrito = null;
+    corrigir();
+    preencherOnde();
+    el.mun.blur();
+    atualizar();
+  }
+  function ligarBuscaMun() {
+    el.mun.addEventListener("focus", () => { el.mun.value = ""; buscarMun(); });
+    el.mun.addEventListener("input", buscarMun);
+    el.mun.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        if (el.munSugestoes.hidden) buscarMun();
+        if (!sugestoes.length) return;
+        ativa = (ativa + (ev.key === "ArrowDown" ? 1 : -1) + sugestoes.length) % sugestoes.length;
+        desenharSugestoes(el.mun.value);
+        ev.preventDefault();
+      } else if (ev.key === "Enter") {
+        if (ativa >= 0 && sugestoes[ativa]) { escolherMun(sugestoes[ativa]); ev.preventDefault(); }
+      } else if (ev.key === "Escape") {
+        fecharSugestoes();
+        preencherOnde();
+      }
+    });
+    // mousedown (e não click) para escolher antes de o campo perder o foco
+    el.munSugestoes.addEventListener("mousedown", (ev) => {
+      const li = ev.target.closest("li[data-i]");
+      if (li) { ev.preventDefault(); escolherMun(sugestoes[+li.dataset.i]); }
+    });
+    el.mun.addEventListener("blur", () => { fecharSugestoes(); preencherOnde(); });
   }
 
   async function iniciar() {
@@ -172,7 +252,8 @@
     el.pct.innerHTML = indice.pcts.filter((p) => p !== 100).map((p) => `<option value="${p}">${p}% · ${100 - p}% pela lista</option>`).join("");
     lerHash();
     preencherOnde();
-    for (const k of [...CAMPOS, "mun"]) {
+    ligarBuscaMun();
+    for (const k of CAMPOS) {
       el[k].addEventListener("change", () => {
         estado[k] = el[k].value;
         estado.distrito = null;

@@ -36,9 +36,15 @@
           <select id="ano"></select></label>
         <label>Onde
           <select id="uf"><option value="BR">Brasil (todos os estados)</option></select></label>
-        <label id="campo-mun" hidden>Município
-          <select id="mun"><option value="todos">Todos os municípios</option></select>
-          <span class="dica">Entre parênteses, o número de vagas.</span></label>
+        <div id="campo-mun" class="campo" hidden>
+          <label for="mun">Município</label>
+          <div class="combo">
+            <input id="mun" type="search" autocomplete="off" spellcheck="false" placeholder="Busque pelo nome…"
+              role="combobox" aria-expanded="false" aria-controls="mun-sugestoes" aria-autocomplete="list">
+            <ul id="mun-sugestoes" class="sugestoes" role="listbox" hidden></ul>
+          </div>
+          <span class="dica">Busca em todo o país. Em branco: todos os municípios do estado.</span>
+        </div>
         <label>Modelo
           <select id="modelo">
             <optgroup label="Distrital misto">
