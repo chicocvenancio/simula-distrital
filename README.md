@@ -13,7 +13,7 @@ Projeto irmão de [Para onde foi o seu voto?](https://github.com/chicocvenancio/
 - **Modelo compensatório** (o do PL): os distritos ganhos são descontados das cadeiras do partido. Se um partido ganha mais
   distritos do que cadeiras, fica com todos, e as cadeiras extras saem das últimas posições ainda não preenchidas da lista
   (art. 105-C, parágrafo único). O total não muda.
-- **Modelo paralelo** (opção): metade das vagas nos distritos, metade pelos votos partidários, sem desconto.
+- **Modelo paralelo** (padrão do site): metade das vagas nos distritos, metade pelos votos partidários, sem desconto.
 - O resto das vagas é preenchido pela lista preordenada de cada partido (art. 105-D).
 
 ## Outros modelos
@@ -32,7 +32,7 @@ Padrão do site: modelo paralelo, 50%, vence o candidato mais votado no distrito
   dos seus locais de votação. Depois, bisseção recursiva pelo eixo mais comprido, com o mesmo número de **eleitores aptos** por distrito
   (o PL fala em habitantes). Uma zona cortada pela linha é repartida, e seus votos são divididos na mesma proporção.
 - Cada partido lança, em cada distrito, o seu candidato mais votado ali, sem repetir candidato (escolha gulosa).
-- Quem vence o distrito: o partido com mais votos ali (padrão) ou o candidato com mais votos pessoais.
+- Quem vence o distrito: o candidato com mais votos pessoais ali (padrão) ou o partido com mais votos ali.
 - A lista preordenada segue os votos nominais no estado.
 
 ## Gerar os dados
