@@ -35,13 +35,22 @@ Padrão do site: modelo paralelo, 50%, vence o candidato mais votado no distrito
 - Quem vence o distrito: o candidato com mais votos pessoais ali (padrão) ou o partido com mais votos ali.
 - A lista preordenada segue os votos nominais no estado.
 
+## Cargos
+
+- **Deputado federal** e **deputado estadual** (distrital no DF), 2022 e 2026: distritos desenhados sobre pares (município, zona eleitoral).
+- **Vereador**, 2020 e 2024: distritos desenhados dentro de cada município sobre os locais de votação, com os votos por seção
+  (`votacao_secao`). Um arquivo compactado por UF (`data/<ano>/vereador/<UF>.json.gz`), lido com `DecompressionStream`.
+  Se um distrito fica sem candidato atribuído (municípios com poucos candidatos), vence o partido mais votado ali e a vaga
+  vai para o seu próximo candidato ainda não eleito.
+
 ## Gerar os dados
 
 ```bash
-python3 scripts/build_data.py 2022 2026
+python3 scripts/build_data.py 2022 2026   # deputados federais e estaduais
+python3 scripts/build_data.py 2020 2024   # vereadores
 ```
 
-Baixa cerca de 1,3 GB do TSE para `scripts/.cache/` e gera `data/<ano>/<UF>.json` e `data/index.json`.
+Baixa os arquivos do TSE para `scripts/.cache/` (cerca de 1,3 GB para os deputados e 6 GB para os vereadores, por causa da votação por seção).
 
 ## Rodar e testar
 
