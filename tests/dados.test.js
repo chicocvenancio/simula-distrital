@@ -13,7 +13,9 @@ const ler = (...p) => JSON.parse(fs.readFileSync(path.join(raiz, ...p)));
 function conferir(rotulo, d, outros) {
   assert.equal(d.distritos.length, Math.floor(d.vagas / 2), rotulo);
   const nosDistritos = d.distritos.reduce((s, x) => s + Object.values(x.votos).reduce((a, b) => a + b, 0), 0);
-  assert.ok(Math.abs(nosDistritos - d.validos) / d.validos < 0.001, `${rotulo} votos`);
+  // cada distrito arredonda os votos de cada partido: tolerância de 0,1% ou meio voto por (distrito, partido)
+  const folga = Math.max(0.001 * d.validos, 0.5 * d.distritos.length * d.grupos.length);
+  assert.ok(Math.abs(nosDistritos - d.validos) <= folga, `${rotulo} votos`);
   assert.equal(d.candidatos.filter((c) => c.eleito).length, d.vagas, `${rotulo} eleitos`);
   const conjuntos = { 50: d.distritos, ...outros };
   for (const [pct, distritos] of Object.entries(conjuntos)) {

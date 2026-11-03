@@ -63,18 +63,24 @@
   /** Vencedor de cada distrito: { grupo, cand, votos, segundo, margem } */
   function vencedoresDistritos(dados, regra) {
     return dados.distritos.map((d) => {
-      const disputa = Object.keys(d.votos).map((g) => ({
+      let disputa = Object.keys(d.votos).map((g) => ({
         g,
         votos: regra === "candidato" ? (d.cv[g] || 0) : d.votos[g],
         cand: d.cand[g] ?? null,
       })).filter((x) => x.votos > 0 && x.cand !== null); // partido sem candidato no distrito não concorre
+      // Reserva: em municípios com poucos candidatos, um distrito pode ficar sem nenhum candidato atribuído.
+      // Aí vence o partido mais votado ali, e a vaga vai para o seu próximo candidato ainda não eleito.
+      if (!disputa.length) {
+        disputa = Object.keys(d.votos).map((g) => ({ g, votos: d.votos[g], cand: null, reserva: true })).filter((x) => x.votos > 0);
+      }
       disputa.sort((a, b) => b.votos - a.votos || (d.votos[b.g] - d.votos[a.g]) || (a.g < b.g ? -1 : 1));
       const [v, s] = disputa;
-      const total = regra === "candidato" ? disputa.reduce((t, x) => t + x.votos, 0) : d.validos;
+      const total = regra === "candidato" && !(v && v.reserva) ? disputa.reduce((t, x) => t + x.votos, 0) : d.validos;
       return {
         distrito: d,
         grupo: v ? v.g : null,
         cand: v ? v.cand : null,
+        reserva: !!(v && v.reserva),
         votos: v ? v.votos : 0,
         segundo: s ? s.g : null,
         pct: total ? (v ? v.votos : 0) / total : 0,
@@ -162,6 +168,13 @@
         jaEleito.add(i);
         eleitos.push({ cand: cands[i], idx: i, grupo: cands[i].g, via: "votados", posicao: k + 1 });
       });
+    }
+
+    // vencedores de distrito sem candidato atribuído (reserva): próximo candidato do partido ainda não eleito
+    for (const e of eleitos) {
+      if (e.via !== "distrito" || e.cand) continue;
+      const i = cands.map((c, k) => k).filter((k) => cands[k].g === e.grupo && !jaEleito.has(k)).sort((a, b) => cands[b].v - cands[a].v || a - b)[0];
+      if (i !== undefined) { e.cand = cands[i]; e.idx = i; jaEleito.add(i); }
     }
 
     let r;
