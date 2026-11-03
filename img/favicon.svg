@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Distritos</title>
+  <rect x="1" y="1" width="62" height="62" rx="12" fill="#0b6e4f"/>
+  <path d="M10 12h20v18H10zM34 12h20v26H34zM10 34h20v18H10zM34 42h20v10H34z" fill="#e3f1ea"/>
+  <circle cx="20" cy="21" r="4" fill="#f08a24"/>
+  <circle cx="44" cy="25" r="4" fill="#0b6e4f"/>
+  <circle cx="20" cy="43" r="4" fill="#0b6e4f"/>
+  <circle cx="44" cy="47" r="3" fill="#f08a24"/>
+</svg>

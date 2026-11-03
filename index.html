@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>E se fosse distrital misto?</title>
+  <meta name="description" content="Compare os deputados federais eleitos no sistema proporcional com quem seria eleito no voto distrital misto do PL 9.212/2017, defendido por Hugo Motta. Dados oficiais do TSE de 2022 e 2026.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="E se fosse distrital misto?">
+  <meta property="og:description" content="Quem seria eleito deputado federal no voto distrital misto? Simulação com os votos reais de 2022 e 2026.">
+  <meta property="og:locale" content="pt_BR">
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
+  <link rel="preload" href="fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="wrap">
+      <p class="kicker">Deputados e vereadores · simulação</p>
+      <h1>E se fosse distrital misto?</h1>
+      <p class="lead">O presidente da Câmara, Hugo Motta, quer trocar o sistema proporcional pelo <strong>voto distrital misto</strong>:
+        metade dos deputados eleitos em distritos, a outra metade por lista dos partidos.
+        A proposta vale também para deputados estaduais e vereadores. Veja quem teria sido eleito com os votos reais de 2020 a 2026, e quem perderia a vaga.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card" aria-labelledby="controles-titulo">
+      <h2 id="controles-titulo" class="sr-only">Opções da simulação</h2>
+      <div class="controles">
+        <label>Cargo
+          <select id="cargo"><option value="federal">Deputado federal</option></select></label>
+        <label>Eleição
+          <select id="ano"></select></label>
+        <label>Onde
+          <select id="uf"><option value="BR">Brasil (todos os estados)</option></select></label>
+        <label id="campo-mun" hidden>Município
+          <select id="mun"><option value="todos">Todos os municípios</option></select>
+          <span class="dica">Entre parênteses, o número de vagas.</span></label>
+        <label>Modelo
+          <select id="modelo">
+            <optgroup label="Distrital misto">
+              <option value="paralelo">Paralelo</option>
+              <option value="compensatorio">Compensatório (PL 9.212/2017)</option>
+            </optgroup>
+            <optgroup label="Outros modelos discutidos">
+              <option value="distritaoMisto">Distritão misto (transição 2030)</option>
+              <option value="distritao">Distritão</option>
+              <option value="distrital">Distrital puro</option>
+            </optgroup>
+          </select>
+          <span class="dica" id="dica-modelo"></span></label>
+        <label id="campo-pct"><span id="rot-pct">Vagas eleitas nos distritos</span>
+          <select id="pct"></select>
+          <span class="dica" id="dica-pct"></span></label>
+        <label id="campo-regra">Quem vence o distrito
+          <select id="regra">
+            <option value="candidato">O candidato mais votado ali</option>
+            <option value="partido">O partido mais votado ali</option>
+          </select>
+          <span class="dica" id="dica-regra"></span></label>
+      </div>
+    </section>
+
+    <section id="resultado" class="card resultado" aria-live="polite"><p class="carregando">Carregando…</p></section>
+
+    <section class="explica" aria-labelledby="como">
+      <h2 id="como">Como funciona o distrital misto do projeto</h2>
+      <div class="grade">
+        <article>
+          <h3>1. Dois votos</h3>
+          <p>O eleitor vota em um candidato do seu <strong>distrito</strong> e, separado, em um <strong>partido</strong>.
+            Cada partido lança só um candidato por distrito.</p>
+        </article>
+        <article>
+          <h3>2. Distritos</h3>
+          <p>O estado é dividido em distritos (metade das cadeiras, arredondada para baixo) com o mesmo número de habitantes, 5% para mais ou para menos.
+            Em cada um vence quem tiver mais votos, mesmo sem maioria absoluta.</p>
+        </article>
+        <article>
+          <h3>3. O voto no partido decide o tamanho</h3>
+          <p>Com os votos partidários, todas as cadeiras do estado são repartidas pelas maiores médias (método D'Hondt).
+            É isso que define quantos deputados cada partido terá. Não há quociente eleitoral.</p>
+        </article>
+        <article>
+          <h3>4. A lista completa</h3>
+          <p>Os vencedores nos distritos ocupam primeiro as cadeiras do partido. As que sobram vão para a <strong>lista preordenada</strong> do partido.
+            Se um partido ganha mais distritos do que cadeiras, fica com todos, e as cadeiras extras saem do fim da lista de outros partidos.</p>
+        </article>
+      </div>
+
+      <div class="modelo">
+        <h3>O que esta simulação supõe</h3>
+        <p>Ninguém votou assim, então é preciso supor como os votos de 2022 e 2026 se comportariam. As escolhas, todas visíveis no código:</p>
+        <ul>
+          <li><strong>Voto partidário</strong> = votos do partido ou federação no estado (nominais + legenda), como foram dados.</li>
+          <li><strong>Distritos</strong>: o projeto manda a Justiça Eleitoral desenhá-los. Aqui eles são traçados automaticamente:
+            cada par (município, zona eleitoral) fica na posição média dos seus locais de votação, e o estado é cortado ao meio repetidas vezes
+            pela direção mais comprida, até formar distritos com o mesmo número de eleitores aptos (em vez de habitantes).
+            Quando a linha de corte passa por uma zona, ela é dividida entre os dois distritos, supondo os votos espalhados por igual.
+            Outro desenho daria outro resultado — esse é um dos riscos do sistema.</li>
+          <li><strong>Candidato do distrito</strong>: em cada distrito, cada partido é representado pelo seu candidato mais votado ali,
+            sem repetir o mesmo candidato em dois distritos.</li>
+          <li><strong>Quem vence</strong>: por padrão, o candidato com mais votos pessoais no distrito.
+            A outra opção dá a vitória ao partido com mais votos ali, supondo que todo eleitor do partido votaria no candidato dele.</li>
+          <li><strong>Lista preordenada</strong>: segue a ordem dos votos nominais no estado. Na prática, os partidos decidiriam a ordem.</li>
+          <li><strong>Federações</strong> contam como um partido, como nas eleições desde 2022.</li>
+          <li><strong>Vereadores</strong>: os distritos são desenhados dentro de cada município a partir dos locais de votação (votos por seção eleitoral).
+            Em municípios pequenos, com poucos locais, os distritos ficam parecidos entre si. Eleições de 2020 e 2024.</li>
+          <li><strong>Deputados estaduais</strong> (distritais no DF): mesmas regras e mesmo método dos federais, com as vagas de cada assembleia.</li>
+        </ul>
+        <p>O padrão é o <strong>modelo paralelo</strong>: metade das vagas nos distritos e metade repartida pelos votos partidários, sem desconto.
+          É a leitura mais direta do que as notícias descrevem sobre a PEC de 2026 (“metade nos distritos, metade pela lista”). O <strong>compensatório</strong>
+          segue o texto do PL 9.212/2017, em que os distritos ganhos são descontados das cadeiras a que o partido tem direito. Os quatro cartões acima descrevem esse modelo do PL.
+          Nos dois, dá para mudar a parte das vagas eleitas nos distritos (de 30% a 70%), como em sistemas mistos de outros países, que não dividem meio a meio.</p>
+      </div>
+
+      <div class="modelo">
+        <h3>Outros modelos discutidos</h3>
+        <ul>
+          <li><strong>Distritão misto</strong>: é a transição para 2030 negociada na PEC de 2026. Metade das vagas vai para os candidatos mais votados do estado, sem quociente eleitoral.
+            A outra metade vai para listas fechadas dos partidos, em proporção aos votos (aqui pelo método D'Hondt, com a ordem da lista seguindo os votos nominais).
+            Os detalhes ainda não foram publicados.</li>
+          <li><strong>Distritão</strong>: todas as vagas para os mais votados do estado. A Câmara rejeitou o modelo em 2015, em 2017 (na reforma relatada por Vicente Cândido, que previa distrital misto a partir de 2022)
+            e em 2021, por 423 votos a 35.</li>
+          <li><strong>Distrital puro</strong>: o estado é dividido em tantos distritos quantas são as vagas, e cada um elege um deputado por maioria simples. O Brasil usou eleição por distritos no Império e na Primeira República.</li>
+        </ul>
+        <p class="fonte">Fontes: <a href="https://www.congressonacional.leg.br/materias/materias-bicamerais/-/ver/pls-86-2017">PL 9.212/2017</a> (PLS 86/2017, aprovado no Senado em 2017);
+          votos por município e zona, eleitorado e locais de votação do <a href="https://dadosabertos.tse.jus.br/">Portal de Dados Abertos do TSE</a>.</p>
+      </div>
+    </section>
+
+    <footer class="rodape">
+      <p>Projeto irmão de <a href="https://chicocvenancio.github.io/Para-onde-foi-o-seu-voto/">Para onde foi o seu voto?</a> ·
+        <a href="https://github.com/chicocvenancio/simula-distrital">código no GitHub</a>.
+        O cálculo roda no navegador; a página não faz requisições a terceiros.</p>
+    </footer>
+  </main>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
