@@ -113,11 +113,18 @@
   const pctEfetivo = () => (MODELOS[estado.modelo].pct ? +estado.pct : 100);
   const opcoes = () => ({ modelo: estado.modelo, regra: estado.regra, pct: pctEfetivo() });
 
-  /** JSON compactado com gzip (arquivos de vereador). Se o servidor já descompactou, lê direto. */
+  /** JSON compactado com gzip (arquivos de vereador). Se o servidor já descompactou, lê direto.
+   *  Onde .gz não é servido (Artifact), há uma cópia em base64 em .b64.txt. */
   function carregarGz(url) {
     if (!cache[url]) cache[url] = fetch(url).then(async (r) => {
-      if (!r.ok) throw new Error(url);
-      const buf = new Uint8Array(await r.arrayBuffer());
+      let buf;
+      if (r.ok) buf = new Uint8Array(await r.arrayBuffer());
+      else {
+        const alt = await fetch(url.replace(/\.json\.gz$/, ".b64.txt"));
+        if (!alt.ok) throw new Error(url);
+        const bin = atob((await alt.text()).trim());
+        buf = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+      }
       if (buf[0] !== 0x1f || buf[1] !== 0x8b) return JSON.parse(new TextDecoder().decode(buf));
       const fluxo = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
       return JSON.parse(await new Response(fluxo).text());
